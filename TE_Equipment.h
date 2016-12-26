@@ -36,13 +36,13 @@ typedef enum{	EQUIP_TYPE_DV = EQUIPMENT_TYPE_STANDARD_DEVICE,\
 
 STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , int bRunAutoSelectionOnly );
 
-STD_ERROR		TE_EQUIP_CloseEquipment( int hMainHandle );
+STD_ERROR		TE_EQUIP_CloseEquipment( int hMainHandle , unsigned long long hEquipmentID , int hEquipmentHandle );
 
 STD_ERROR		TE_EQUIP_TestConnection( int hMainHandle , unsigned long long ulEquipmentID , int *pbTestStaus );
 
 STD_ERROR		TE_EQUIP_ViewCalibration( int hMainHandle , unsigned long long ulEquipmentID );
 
-STD_ERROR		TE_EQUIP_ConnectToEquipment( int hMainHandle , unsigned long long ulEquipmentID , int *pEquipmentHandle );
+STD_ERROR		TE_EQUIP_ConnectToEquipment( int hMainHandle , unsigned long long ulEquipmentID , int *pEquipmentHandle , int bViewConnectionWindow );
 
 STD_ERROR		TE_EQUIP_Devices_Apply_PathCommands( int hMainHandle , const char szPrefix[] , int iTestIndex , int hEquipmentHandle , int iPathIndex , int iSlotNumber );
 

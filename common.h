@@ -106,6 +106,10 @@ char** 	GetVarStringArray( sClb* clb, int vartype, char *name , int *pNumberOfIt
 #define RELEASE_TEST_LOCK 																																								{ StdError.error = clb->ReleaseTestLock(clb->handle);  }
 #define TRY_GET_TEST_LOCK_ERROR 																																						{ int xxStatus = 0; StdError.error = clb->TryToGetTestLock(clb->handle,&xxStatus); if ( StdError.error ) goto Error; if ( xxStatus == 0 ) goto Error;}
 
+#define SYNCHRONIZE_ALL_SLOTS_HERE 																																						{ clb->SynchronizeAllSlotsAtThisPoint(clb->handle,0,NULL); }
+#define SYNCHRONIZE_ALL_SLOTS_HERE_FIRST_RUN 																																			{ clb->SynchronizeAllSlotsAtThisPoint(clb->handle,1,NULL); }
+#define SYNCHRONIZE_ALL_SLOTS_HERE_GET_MASTER(xxIamTheMaster) 																																						{ clb->SynchronizeAllSlotsAtThisPoint(clb->handle,0,&xxIamTheMaster); }
+
 #define ENTRY_TO_MAIN_SEMAPHORE_SPACE																																					{ clb->EntryToSemaphoreSpace(clb->handle,1); bGetMainSemaphoreLock = 1; }
 #define EXIT_FROM_MAIN_SEMAPHORE_SPACE																																					{ if ( bGetMainSemaphoreLock ) { clb->ExitFromSemaphoreSpace(clb->handle,1); bGetMainSemaphoreLock = 0; }}
 #define ENTRY_TO_SUB_SEMAPHORE_SPACE																																					{ clb->EntryToSemaphoreSpace(clb->handle,0); bGetSubSemaphoreLock = 1; }   
@@ -168,8 +172,9 @@ char** 	GetVarStringArray( sClb* clb, int vartype, char *name , int *pNumberOfIt
 #define GET_RESULT_SPEC_TYPE(number,xxxSpecType)																																		clb->GetCurrentResultSpecType( clb->handle , number , &xxxSpecType );
 #define GET_CURRENT_RESULT_SPEC_TYPE(xxxSpecType)																																		clb->GetCurrentResultSpecType( clb->handle , 0 , &xxxSpecType );
 
+#define SET_MIN_MAX_SPECS(xxxPointerToMinSpec,xxxPointerToMaxSpec)																														clb->SetCurrentResultMinMax( clb->handle , 0 , xxxPointerToMinSpec , xxxPointerToMaxSpec , 1 , 0.0 );
 
-//#define SET_MAX_MIN_SPECS(xxxPointerToMinSpec,xxxPointerToMaxSpec,xxxSpecValuesCount,xxxSpecFloatType,xxxSpecFloatValue)																clb->SetCurrentResultMinMax( clb->handle , &xxxPointerToMinSpec , &xxxPointerToMaxSpec , &xxxSpecValuesCount , &xxxSpecFloatType , &xxxSpecFloatValue );     
+#define SET_MIN_MAX_SPECS_NUMBER(xxNumber,xxxPointerToMinSpec,xxxPointerToMaxSpec)																										clb->SetCurrentResultMinMax( clb->handle , xxNumber , xxxPointerToMinSpec , xxxPointerToMaxSpec , 1 , 0.0 );
 
 #define APPLY_LINEAR_INTERPOLATION( xxxXaxisArray , xxxYaxisArray , xxxNumberOfPoints , xxxNewNumberOfPoints  , xxxStartX , xxxStopX , xxxNewXaxisArray , xxxNewYaxisArray )			clb->InterpolationTransfer( 0 , xxxXaxisArray , xxxYaxisArray , xxxNumberOfPoints , xxxNewNumberOfPoints  , xxxStartX , xxxStopX , &xxxNewXaxisArray , &xxxNewYaxisArray );  
 #define APPLY_NON_LINEAR_INTERPOLATION( xxxXaxisArray , xxxYaxisArray , xxxNumberOfPoints , xxxNewNumberOfPoints  , xxxStartX , xxxStopX , xxxNewXaxisArray , xxxNewYaxisArray )		clb->InterpolationTransfer( 3 , xxxXaxisArray , xxxYaxisArray , xxxNumberOfPoints , xxxNewNumberOfPoints  , xxxStartX , xxxStopX , &xxxNewXaxisArray , &xxxNewYaxisArray );  
@@ -229,6 +234,8 @@ char** 	GetVarStringArray( sClb* clb, int vartype, char *name , int *pNumberOfIt
 #define APPLY_RF_BOX_TEST_PATH_BY_INDEX( xxPathIndex )																																	{ clb->ApplyRfBoxPathConnectionCommands ( clb->handle , xxPathIndex , NULL ); }
 #define APPLY_RF_BOX_PATH_BY_NAME( xxPathName )																																			{ clb->ApplyRfBoxPathConnectionCommands ( clb->handle , -1 , xxPathName ); } 
 
+#define CLOSE_EQUIPMENT_HANDLE(xxHandle)																																				clb->CloseEquipmentHandle ( clb->handle , xxHandle );
+	
 //----------------------------------------------- Get Equipment handles single -----------------------------------------------------//
 #define GET_UUT_EQUIPMENT_HANDLE(xxHandle)																																				clb->GetEquipmentHandle ( clb->handle  , EQUIPMENT_TYPE_STANDARD_DEVICE , STANDARD_DEVICE_UUT , 0 , 1 , &xxHandle );  
 #define GET_RFBOX_EQUIPMENT_HANDLE(xxHandle)																																			clb->GetEquipmentHandle ( clb->handle  , EQUIPMENT_TYPE_STANDARD_DEVICE , STANDARD_DEVICE_RF_BOX_ALIAS , 0 , 1 , &xxHandle );  

@@ -607,7 +607,7 @@ char* _GetVarString( int handle, int vartype, char *name , va_list arguments )
 	
 	reply = VarGetString( hMainStoreHandle ,  vartype , ullLinkedID ,name,0);
 	
-	if ( reply < 0 )
+	if ( reply <= 0 )
 	{
 		if ((( vartype == VARTYPE_EQUIPMENT ) || ( vartype == VARTYPE_EQUIPMENT_USE )) && ( pAlias ))
 		{
@@ -721,7 +721,7 @@ char** _GetVarStringArray( int handle, int vartype, char *name , int *pNumberOfI
 	
 	reply = VarGetStringArray( hMainStoreHandle ,  vartype , ullLinkedID ,name,0);
 	
-	if ( reply < 0 )
+	if ( reply <= 0 )
 	{
 		if ((( vartype == VARTYPE_EQUIPMENT ) || ( vartype == VARTYPE_EQUIPMENT_USE )) && ( pAlias ))
 		{

@@ -176,8 +176,8 @@
 
 #define		WAIT_BAR_ON_CONT					100
 
-#define		LICENSE_SERVER_PORT					2016
-#define		LICENSE_SERVER_ADDRESS				"10.0.1.1"
+#define		LICENSE_SERVER_PORT					2014
+#define		LICENSE_SERVER_ADDRESS				"192.168.1.181"
 
 #define		REFERENCE_DB_NAME					""
 
@@ -186,12 +186,14 @@
 
 #define		TEST_EXECUTIVE_FILENAME				"Test Executive.exe"
 
+#define		REPORT_GENERATOR_FILENAME			"ReportGenerator.exe"
+
 #define		TEST_SET_SUB_DIRECTORY				"Test Set"
 
 #define		ESC_KEY								768  
 
 /************ Database Version **************************************************/
-#define		DB_LOCAL_VERSION					"1.0.0"
+#define		DB_LOCAL_VERSION					"1.0.107"
 /********************************************************************************/
 
 typedef enum { DB_SQL_TYPE_SQLITE , DB_SQL_TYPE_MS_SQL_SERVER , DB_SQL_TYPE_SENTINEL } teDbSqlType; 
@@ -200,7 +202,11 @@ typedef enum {SCALE_TYPE_AUTO , SCALE_TYPE_PRESET , SCALE_TYPE_MARGEN , SCALE_TY
 typedef enum {INTER_TYPE_NONE , INTER_TYPE_LINEAR , INTER_TYPE_COSINE , INTER_TYPE_CUBIC , INTER_TYPE_HERMITE , INTER_TYPE_SENTINEL } teInter;
 typedef enum {FLOATING_TYPE_NONE , FLOATING_TYPE_PEAK , FLOATING_TYPE_TOP , FLOATING_TYPE_TOP_SKIP , FLOATING_TYPE_SENTINEL } teFloting;
 typedef enum {LABEL_TYPE_GOOD , LABEL_TYPE_SENTINEL } teLabel;  
-typedef enum {ALLOW_TYPE_ENABLE , ALLOW_TYPE_DISABLE , ALLOW_TYPE_NO_COMPARE , ALLOW_TYPE_COMPARE_HIGH , ALLOW_TYPE_COMPARE_LOW , ALLOW_TYPE_SENTINEL } teAllow;
+typedef enum {ALLOW_TYPE_ENABLE , ALLOW_TYPE_DISABLE , ALLOW_TYPE_NO_COMPARE , ALLOW_TYPE_COMPARE_HIGH , ALLOW_TYPE_COMPARE_LOW , ALLOW_TYPE_COMPARE_DYNAMIC , ALLOW_TYPE_SENTINEL } teAllow;
+
+typedef enum { VER_TEST_TYPE_NONE , VER_TEST_TYPE_ENG , VER_TEST_TYPE_ATP , VER_TEST_TYPE_MODULE_ATP , VER_TEST_TYPE_CALIB , VER_TEST_TYPE_MODULE_CALIB , VER_TEST_TYPE_HASS , VER_TEST_TYPE_QTP , VER_TEST_TYPE_HALT , VER_TEST_TYPE_SENTINEL } teVerTestTypes;
+
+typedef enum { FIN_TEST_NO , FIN_TEST_YES , FIN_TEST_RMA , FIN_TEST_TYPE_SENTINEL } teFinalTestTypes;
 
 /***************/
 typedef struct 
@@ -255,6 +261,15 @@ typedef struct
 	char						szProtect[64];
 	
 } tsControls;
+
+typedef struct 
+{
+	char					szName[64];
+	
+} tsTestTypeItem;
+
+extern tsTestTypeItem			tTestTypes[VER_TEST_TYPE_SENTINEL];
+
 /***************/
 
 /* DB */
@@ -359,6 +374,8 @@ int EraseFolderEntry ( char *pszFilePath );
 
 int	GetFileVersion( char *szFileNamePath , char *szVersion );
 int	GetFileDateTime( char *szFileNamePath , double *vlfDateTime );
+
+int ImportNewFiles( int hMainStore );
 
 int CVICALLBACK RUN_ExportReports ( void *pData ); 
 int CVICALLBACK RUN_ImportNewFiles( void *pData ); 

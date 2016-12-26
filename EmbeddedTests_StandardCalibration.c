@@ -30,6 +30,9 @@ typedef STD_ERROR   (*tfDRV_NetworkAnalyzer_Reponse_Done_Calibrate)(int hInstrum
 typedef STD_ERROR   (*tfDRV_NetworkAnalyzer_Avarage)( int Handle , int iChannel, int bEnable , int iAverageValue );  
 typedef STD_ERROR   (*tfDRV_NetworkAnalyzer_ClearAvarage)( int Handle , int iChannel ); 
 typedef STD_ERROR   (*tfDRV_NetworkAnalyzer_WaitSweep)( int Handle , int iChannel , int iCount );
+typedef STD_ERROR   (*tfDRV_NetworkAnalyzer_SelectMathFunction)( int Handle , int iChannel , char cFunction );   
+typedef STD_ERROR   (*tfDRV_NetworkAnalyzer_SetPower)(int Handle,int iChannel, double lfPower, char *szPowerRequest,int iPortNum);
+typedef STD_ERROR   (*tfDRV_NetworkAnalyzer_GetPower)(int Handle,int iChannel, double *lfPower, int iPortNum);
 
 typedef STD_ERROR   (*tfDRV_SpectrumAnalyzer_Recall)( int Handle , char *szFilePath  );
 typedef STD_ERROR   (*tfDRV_SpectrumAnalyzer_SaveState)( int Handle , char *szFilePath  );
@@ -93,6 +96,9 @@ TSTE_TEST( embeddedTestCalibration )
 	tfDRV_NetworkAnalyzer_Avarage										DRV_NetworkAnalyzer_Avarage     								=	NULL;
 	tfDRV_NetworkAnalyzer_ClearAvarage									DRV_NetworkAnalyzer_ClearAvarage								=	NULL;
 	tfDRV_NetworkAnalyzer_WaitSweep										DRV_NetworkAnalyzer_WaitSweep   								=	NULL;
+	tfDRV_NetworkAnalyzer_SelectMathFunction							DRV_NetworkAnalyzer_SelectMathFunction							=	NULL;
+	tfDRV_NetworkAnalyzer_SetPower										DRV_NetworkAnalyzer_SetPower									=	NULL;  
+	tfDRV_NetworkAnalyzer_GetPower										DRV_NetworkAnalyzer_GetPower									=	NULL;  
 	
 	tfDRV_SpectrumAnalyzer_Recall										DRV_SpectrumAnalyzer_Recall                   					=	NULL;
 	tfDRV_SpectrumAnalyzer_SaveState									DRV_SpectrumAnalyzer_SaveState									=	NULL; 
@@ -164,6 +170,7 @@ TSTE_TEST( embeddedTestCalibration )
 																		lfDB_MeasureTimeout												=	0.0,
 																		lfDB_StartFrequency												=	0.0,
 																		lfDB_StopFrequency												=	0.0,
+																		lfDB_ChangePowerValue											=	0.0, 															  
 																		lfDB_OrigStartFrequency											=	0.0,
 																		lfDB_OrigStopFrequency											=	0.0,
 																		lfDB_MinimumMeasureLimit										=	0.0; 
@@ -183,6 +190,7 @@ TSTE_TEST( embeddedTestCalibration )
 	
 	double																lfLastCalibrationDate											=	0.0,
 																		lfNewCalibrationDate											=	0.0,
+																		lfPreviousPowerValue											=	0.0, 
 																		lfOutputStartFrequency											=	0.0,  
 																		lfCurrentReferenceLevel											=	0.0,  
 																		lfPowerMeterLossFactor											=	0.0, 
@@ -194,15 +202,21 @@ TSTE_TEST( embeddedTestCalibration )
 																		iDB_NumberOfPoints												=	0,
 																		iDB_NumberOfRanges												=	0,
 																		iDB_VSWR_TraceNumber											=	0,
+																		iDB_ChangePowerNumber											=	0,
 																		iDB_GetFromTraceNumber											=	0,
 																		iDB_PowerMeterPortNumber										=	0,
 																		iDB_NumberOfNetworkFiles										=	0,
+																		iDB_NumberOfMathFunctions										=	0, 
 																		iDB_PowerMeterSubPortNumber										=	0,
 																		iDB_NumberOfReferenceLevels										=	0,
+																		iDB_NumberOfMathTraceNumbers									=	0, 
 																		iDB_LastExtrapolationRangeNumber								=	0,
 																		iDB_NumberOfNetworkAnalyzerStates								=	0;  
 												
 	int																	bDB_Use_Aux_Cable												=	0,  
+																		bDB_UserCalibration												=	0,
+																		bDB_UseMathFunction												=	0, 
+																		bDB_EnableChangePower											=	0,
 																		bDB_AllowExtrapolation											=	0, 
 																		bDB_DifferentialMeas											=	0,  
 																		bDB_DisableResults												=	0, 
@@ -218,14 +232,22 @@ TSTE_TEST( embeddedTestCalibration )
 																		bDB_AnalyzeWorstCaseResults										=	0,   
 																		bDB_DisableToStoreCalibration									=	0,
 																		bDB_AutoReferenceCalculation									=	0,
+																		bDB_EnableRestoreChangePower									=	0,
 																		bDB_SA_NoiseSource_FillTables									=	0, 
 																		bDB_SA_NoiseSource_CalibrateNow									=	0; 
 																		
-	char																**pszNetworkAnalyzerStateFiles									=	NULL;
+	char																**pszNetworkAnalyzerStateFiles									=	NULL,
+																		**pszNetworkAnalyzerMathFunction								=	NULL;
 	
 	char																*pszSpectrumAnalyzerStateFile									=	NULL,  
 																		*pszSignalGeneratorState										=	NULL,
-																		*pszNetworkAnalyzerCalPortsList									=	NULL,   
+																		*pszNetworkAnalyzerCalPortsList									=	NULL, 
+																		*pszPreEcal_Instruction											=	NULL,
+																		*pszPreEcal_Instruction_Pic										=	NULL, 
+																		*pszUserCal_Instruction											=	NULL,
+																		*pszUserCal_Instruction_Pic										=	NULL, 
+																		*pszPostManualCal_Instruction									=	NULL,
+																		*pszPostManualCal_Instruction_Pic								=	NULL,
 																		*pszPostEcal_Instruction										=	NULL, 
 																		*pszPostEcal_Instruction_Pic							   		=	NULL, 
 																		*pszCalibrated_With_Other_Path								 	=	NULL,
@@ -244,6 +266,7 @@ TSTE_TEST( embeddedTestCalibration )
 																		iResultNumber													=	0; 
 										
 	int																	iCurrentPathIndex												=	0,
+																		iCurrentMathIndex												=	0,
 																		iCurrentResultIndex												=	0,
 																		iCurrentPathPartIndex											=	0,
 																		iNetworkAnalyzerStateFileIndex									=	0;  
@@ -256,7 +279,8 @@ TSTE_TEST( embeddedTestCalibration )
 	double																*pDB_FrequencyList												=	NULL,
 																		*vlfDB_ReferenceLevelList										=	NULL; 
 												
-	int																	*pDB_RangesList													=	NULL;
+	int																	*pDB_RangesList													=	NULL,
+																		*viDB_MathTraceNumbers											=	NULL;
 	
 	int																	bUserAcceptCalibration											=	0,
 																		bEnableToSaveCallibration										=	0;
@@ -451,7 +475,10 @@ TSTE_TEST( embeddedTestCalibration )
 		DRV_NetworkAnalyzer_Avarage = (tfDRV_NetworkAnalyzer_Avarage) GetProcAddress( clb->hDriverManagerLibrary , "DRV_NetworkAnalyzer_Avarage" );      
 		DRV_NetworkAnalyzer_ClearAvarage = (tfDRV_NetworkAnalyzer_ClearAvarage) GetProcAddress( clb->hDriverManagerLibrary , "DRV_NetworkAnalyzer_ClearAvarage" ); 
 		DRV_NetworkAnalyzer_WaitSweep = (tfDRV_NetworkAnalyzer_WaitSweep) GetProcAddress( clb->hDriverManagerLibrary , "DRV_NetworkAnalyzer_WaitSweep" );    
-										 
+		DRV_NetworkAnalyzer_SelectMathFunction = (tfDRV_NetworkAnalyzer_SelectMathFunction) GetProcAddress( clb->hDriverManagerLibrary , "DRV_NetworkAnalyzer_SelectMathFunction" );    
+		DRV_NetworkAnalyzer_SetPower = (tfDRV_NetworkAnalyzer_SetPower) GetProcAddress( clb->hDriverManagerLibrary , "DRV_NetworkAnalyzer_SetPower" );      
+		DRV_NetworkAnalyzer_GetPower = (tfDRV_NetworkAnalyzer_GetPower) GetProcAddress( clb->hDriverManagerLibrary , "DRV_NetworkAnalyzer_GetPower" );      
+		
 		sprintf( szFormatedVariable , "Calibration_%d_%d_Get_From_Trace_Number" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 );   
 		iDB_GetFromTraceNumber = GetVarInt( clb, VARTYPE_TEST , szFormatedVariable ); 
 
@@ -523,6 +550,17 @@ TSTE_TEST( embeddedTestCalibration )
 								LOG(CLB_LINE_NORMAL, szFormatedString ); 	
 							}
 						
+							sprintf( szFormatedVariable , "Calibration_%d_%d_Pre_ECal_Instruction" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 );
+							pszPreEcal_Instruction = GetVarString( clb, VARTYPE_TEST , szFormatedVariable  );	
+						
+							sprintf( szFormatedVariable , "Calibration_%d_%d_Pre_ECal_Instruction_Pic" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 );
+							pszPreEcal_Instruction_Pic = GetVarString( clb, VARTYPE_TEST , szFormatedVariable  );	
+						
+							if ( pszPreEcal_Instruction && ( strlen(pszPreEcal_Instruction) > 1 ))
+							{
+								INSTRUCTION(pszPreEcal_Instruction,pszPreEcal_Instruction_Pic);
+							}
+								
 							for ( iTryIndex = 0; iTryIndex < 3; iTryIndex++ )
 							{
 								START_TIMEOUT("",lfDB_MeasureTimeout);
@@ -550,85 +588,167 @@ TSTE_TEST( embeddedTestCalibration )
 							sprintf( szFormatedVariable , "Calibration_%d_%d_AverageValue" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 );  
 							iDB_AverageValue = GetVarInt( clb, VARTYPE_TEST , szFormatedVariable );
 						
-							sprintf( szFormatedString , "Network Analyzer :: Set Average %d" , iDB_AverageValue );   
-							LOG(CLB_LINE_NORMAL, szFormatedString ); 
+							if ( iDB_AverageValue > 0 )
+							{
+								sprintf( szFormatedString , "Network Analyzer :: Set Average %d" , iDB_AverageValue );   
+								LOG(CLB_LINE_NORMAL, szFormatedString ); 
 				
-							CHK_STDERR( DRV_NetworkAnalyzer_Avarage( hNetworkAnalyzer , iDB_GetFromTraceNumber , 1 , iDB_AverageValue ));
+								CHK_STDERR( DRV_NetworkAnalyzer_Avarage( hNetworkAnalyzer , iDB_GetFromTraceNumber , 1 , iDB_AverageValue ));
+							}
+							
+							sprintf( szFormatedVariable , "Calibration_%d_%d_EnableChangePower" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 );  
+							bDB_EnableChangePower = GetVarInt( clb, VARTYPE_TEST , szFormatedVariable );
 						
-							START_TIMEOUT("",lfDB_MeasureTimeout); 
+							sprintf( szFormatedVariable , "Calibration_%d_%d_EnableRestoreChangePower" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 );  
+							bDB_EnableRestoreChangePower = GetVarInt( clb, VARTYPE_TEST , szFormatedVariable );   
+							
+							if ( bDB_EnableChangePower )
+							{
+								sprintf( szFormatedVariable , "Calibration_%d_%d_ChangePowerValue" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 );  
+								lfDB_ChangePowerValue = GetVarDouble( clb, VARTYPE_TEST , szFormatedVariable );
+								
+								sprintf( szFormatedVariable , "Calibration_%d_%d_ChangePowerPortNumber" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 );  
+								iDB_ChangePowerNumber = GetVarInt( clb, VARTYPE_TEST , szFormatedVariable );
+								
+								sprintf( szFormatedString , "Network Analyzer :: Set Power %0.1lf" , lfDB_ChangePowerValue );   
+								LOG(CLB_LINE_NORMAL, szFormatedString ); 
+				
+								CHK_STDERR( DRV_NetworkAnalyzer_GetPower( hNetworkAnalyzer , iDB_GetFromTraceNumber , &lfPreviousPowerValue , iDB_ChangePowerNumber ));   
+								CHK_STDERR( DRV_NetworkAnalyzer_SetPower( hNetworkAnalyzer , iDB_GetFromTraceNumber , lfDB_ChangePowerValue , NULL , iDB_ChangePowerNumber ));
+							}
+							
+							sprintf( szFormatedVariable , "Calibration_%d_%d_User_Calibration" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 );
+							bDB_UserCalibration = GetVarInt( clb, VARTYPE_TEST , szFormatedVariable ); 
+							
+							if ( bDB_UserCalibration )
+							{
+								sprintf( szFormatedVariable , "Calibration_%d_%d_User_Cal_Instruction" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 );
+								pszUserCal_Instruction = GetVarString( clb, VARTYPE_TEST , szFormatedVariable  );	
+								
+								sprintf( szFormatedVariable , "Calibration_%d_%d_User_Cal_Instruction_Pic" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 );
+								pszUserCal_Instruction_Pic = GetVarString( clb, VARTYPE_TEST , szFormatedVariable  );	
+								
+								if ( pszUserCal_Instruction && ( strlen(pszUserCal_Instruction) > 1 ))
+								{
+									INSTRUCTION(pszUserCal_Instruction,pszUserCal_Instruction_Pic);
+								}
+								
+								sprintf( szFormatedVariable , "Calibration_%d_%d_Use_Math_Function" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 );
+								bDB_UseMathFunction = GetVarInt( clb, VARTYPE_TEST , szFormatedVariable ); 
+								
+								if ( bDB_UseMathFunction )
+								{
+									sprintf( szFormatedVariable , "Calibration_%d_%d_Math_Trace_Number" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 );   
+									iDB_NumberOfMathTraceNumbers = GetVarIntArray( clb, VARTYPE_TEST , szFormatedVariable , &viDB_MathTraceNumbers );     
+									
+									sprintf( szFormatedVariable , "Calibration_%d_%d_MathFunction" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 );  
+									pszNetworkAnalyzerMathFunction = GetVarStringArray( clb, VARTYPE_TEST , szFormatedVariable , &iDB_NumberOfMathFunctions , hNetworkAnalyzer );  
+									
+									for ( iCurrentMathIndex = 0; iCurrentMathIndex < iDB_NumberOfMathFunctions; iCurrentMathIndex++ )
+									{
+										sprintf( szFormatedString , "Set network analyzer math function (%c)" , pszNetworkAnalyzerMathFunction[iCurrentMathIndex][0] );   
+										LOG(CLB_LINE_NORMAL, szFormatedString ); 
+			
+										CHK_STDERR( DRV_NetworkAnalyzer_SelectMathFunction ( hNetworkAnalyzer , viDB_MathTraceNumbers[iCurrentMathIndex] , pszNetworkAnalyzerMathFunction[iCurrentMathIndex][0] ))
+									}
+								}
+							}
+							else
+							{
+								START_TIMEOUT("",lfDB_MeasureTimeout); 
 						
-							FREE(pszNetworkAnalyzerCalPortsList);
+								FREE(pszNetworkAnalyzerCalPortsList);
 						
-							sprintf( szFormatedVariable , "Calibration_%d_%d_Range_%d_Cal_PortsList" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 , iRangeIndex+1 );  
-							pszNetworkAnalyzerCalPortsList = GetVarString( clb, VARTYPE_TEST , szFormatedVariable , hNetworkAnalyzer );     
+								sprintf( szFormatedVariable , "Calibration_%d_%d_Range_%d_Cal_PortsList" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 , iRangeIndex+1 );  
+								pszNetworkAnalyzerCalPortsList = GetVarString( clb, VARTYPE_TEST , szFormatedVariable , hNetworkAnalyzer );     
 
-							sprintf( szFormatedVariable , "Calibration_%d_%d_Clear_Calibration" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 );
-							bDB_ClearCalibration = GetVarInt( clb, VARTYPE_TEST , szFormatedVariable ); 
+								sprintf( szFormatedVariable , "Calibration_%d_%d_Clear_Calibration" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 );
+								bDB_ClearCalibration = GetVarInt( clb, VARTYPE_TEST , szFormatedVariable ); 
 						
-							if ( bDB_ClearCalibration )
-							{
-								LOG(CLB_LINE_NORMAL, "Network Analyzer :: Cleaning Calibration ..." ); 
+								if ( bDB_ClearCalibration )
+								{
+									LOG(CLB_LINE_NORMAL, "Network Analyzer :: Cleaning Calibration ..." ); 
 							
-								UPDATERR( DRV_NetworkAnalyzer_Reponse_OpenShortLoad_Calibrate( hNetworkAnalyzer , -1 , NULL , lfDB_MeasureTimeout ));
+									UPDATERR( DRV_NetworkAnalyzer_Reponse_OpenShortLoad_Calibrate( hNetworkAnalyzer , -1 , NULL , lfDB_MeasureTimeout ));
+								}
+						
+								sprintf( szFormatedVariable , "Calibration_%d_%d_Open_Calibration" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 );
+								bDB_ApplyOpenCalibration = GetVarInt( clb, VARTYPE_TEST , szFormatedVariable ); 
+						
+								if ( bDB_ApplyOpenCalibration )
+								{
+									LOG(CLB_LINE_NORMAL, "Network Analyzer :: Calibrating Open ..." ); 
+							
+									UPDATERR( DRV_NetworkAnalyzer_Reponse_OpenShortLoad_Calibrate( hNetworkAnalyzer , 0 , pszNetworkAnalyzerCalPortsList , lfDB_MeasureTimeout ));
+								}
+						
+								sprintf( szFormatedVariable , "Calibration_%d_%d_Short_Calibration" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 );
+								bDB_ApplyShortCalibration = GetVarInt( clb, VARTYPE_TEST , szFormatedVariable ); 
+						
+								if ( bDB_ApplyShortCalibration )
+								{
+									LOG(CLB_LINE_NORMAL, "Network Analyzer :: Calibrating Short ..." ); 
+							
+									UPDATERR( DRV_NetworkAnalyzer_Reponse_OpenShortLoad_Calibrate( hNetworkAnalyzer , 1 , pszNetworkAnalyzerCalPortsList , lfDB_MeasureTimeout ));
+								}
+						
+								sprintf( szFormatedVariable , "Calibration_%d_%d_Load_Calibration" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 );
+								bDB_ApplyLoadCalibration = GetVarInt( clb, VARTYPE_TEST , szFormatedVariable ); 
+						
+								if ( bDB_ApplyLoadCalibration )
+								{
+									LOG(CLB_LINE_NORMAL, "Network Analyzer :: Calibrating Load ..." ); 
+							
+									UPDATERR( DRV_NetworkAnalyzer_Reponse_OpenShortLoad_Calibrate( hNetworkAnalyzer , 2 , pszNetworkAnalyzerCalPortsList , lfDB_MeasureTimeout ));
+								}
+						
+								sprintf( szFormatedVariable , "Calibration_%d_%d_Thru_Calibration" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 );
+								bDB_ApplyThruCalibration = GetVarInt( clb, VARTYPE_TEST , szFormatedVariable ); 
+						
+								if ( bDB_ApplyThruCalibration )
+								{
+									LOG(CLB_LINE_NORMAL, "Network Analyzer :: Calibrating Thru ..." );  
+							
+									UPDATERR( DRV_NetworkAnalyzer_Reponse_Thru_Calibrate( hNetworkAnalyzer , pszNetworkAnalyzerCalPortsList , lfDB_MeasureTimeout ));
+								}
+						
+								if ( IS_OK )
+								{
+									UPDATERR( DRV_NetworkAnalyzer_Reponse_Done_Calibrate( hNetworkAnalyzer ));
+							
+									LOG(CLB_LINE_NORMAL, "Network Analyzer :: Calibration has Done" ); 
+							
+									WAIT("",5.0);
+								}
+						
+								STOP_TIMEOUT; 
 							}
-						
-							sprintf( szFormatedVariable , "Calibration_%d_%d_Open_Calibration" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 );
-							bDB_ApplyOpenCalibration = GetVarInt( clb, VARTYPE_TEST , szFormatedVariable ); 
-						
-							if ( bDB_ApplyOpenCalibration )
+							
+							if ( bDB_EnableChangePower && bDB_EnableRestoreChangePower )
 							{
-								LOG(CLB_LINE_NORMAL, "Network Analyzer :: Calibrating Open ..." ); 
-							
-								UPDATERR( DRV_NetworkAnalyzer_Reponse_OpenShortLoad_Calibrate( hNetworkAnalyzer , 0 , pszNetworkAnalyzerCalPortsList , lfDB_MeasureTimeout ));
+								sprintf( szFormatedString , "Network Analyzer :: Set Power %lf" , lfPreviousPowerValue );   
+								LOG(CLB_LINE_NORMAL, szFormatedString ); 
+								
+								CHK_STDERR( DRV_NetworkAnalyzer_SetPower( hNetworkAnalyzer , iDB_GetFromTraceNumber , lfPreviousPowerValue , NULL , iDB_ChangePowerNumber ));
 							}
-						
-							sprintf( szFormatedVariable , "Calibration_%d_%d_Short_Calibration" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 );
-							bDB_ApplyShortCalibration = GetVarInt( clb, VARTYPE_TEST , szFormatedVariable ); 
-						
-							if ( bDB_ApplyShortCalibration )
-							{
-								LOG(CLB_LINE_NORMAL, "Network Analyzer :: Calibrating Short ..." ); 
 							
-								UPDATERR( DRV_NetworkAnalyzer_Reponse_OpenShortLoad_Calibrate( hNetworkAnalyzer , 1 , pszNetworkAnalyzerCalPortsList , lfDB_MeasureTimeout ));
-							}
-						
-							sprintf( szFormatedVariable , "Calibration_%d_%d_Load_Calibration" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 );
-							bDB_ApplyLoadCalibration = GetVarInt( clb, VARTYPE_TEST , szFormatedVariable ); 
-						
-							if ( bDB_ApplyLoadCalibration )
-							{
-								LOG(CLB_LINE_NORMAL, "Network Analyzer :: Calibrating Load ..." ); 
-							
-								UPDATERR( DRV_NetworkAnalyzer_Reponse_OpenShortLoad_Calibrate( hNetworkAnalyzer , 2 , pszNetworkAnalyzerCalPortsList , lfDB_MeasureTimeout ));
-							}
-						
-							sprintf( szFormatedVariable , "Calibration_%d_%d_Thru_Calibration" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 );
-							bDB_ApplyThruCalibration = GetVarInt( clb, VARTYPE_TEST , szFormatedVariable ); 
-						
-							if ( bDB_ApplyThruCalibration )
-							{
-								LOG(CLB_LINE_NORMAL, "Network Analyzer :: Calibrating Thru ..." );  
-							
-								UPDATERR( DRV_NetworkAnalyzer_Reponse_Thru_Calibrate( hNetworkAnalyzer , pszNetworkAnalyzerCalPortsList , lfDB_MeasureTimeout ));
-							}
-						
-							if ( IS_OK )
-							{
-								UPDATERR( DRV_NetworkAnalyzer_Reponse_Done_Calibrate( hNetworkAnalyzer ));
-							
-								LOG(CLB_LINE_NORMAL, "Network Analyzer :: Calibration has Done" ); 
-							
-								WAIT("",5.0);
-							}
-						
-							STOP_TIMEOUT; 
-					
 							if ( IS_OK && pszNetworkAnalyzerStateFiles[iNetworkAnalyzerStateFileIndex] && (strlen(pszNetworkAnalyzerStateFiles[iNetworkAnalyzerStateFileIndex])))
 							{
 								sprintf( szFormatedString , "Network Analyzer :: Saving state (%s)" , pszNetworkAnalyzerStateFiles[iNetworkAnalyzerStateFileIndex] );   //1
 								LOG(CLB_LINE_NORMAL, szFormatedString ); 
 				
 								DRV_NetworkAnalyzer_SaveStateAndCalibration ( hNetworkAnalyzer , pszNetworkAnalyzerStateFiles[iNetworkAnalyzerStateFileIndex] );
+							}
+							
+							sprintf( szFormatedVariable , "Calibration_%d_%d_Post_Manual_Cal_Instruction" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 );
+							pszPostManualCal_Instruction = GetVarString( clb, VARTYPE_TEST , szFormatedVariable  );	
+								
+							sprintf( szFormatedVariable , "Calibration_%d_%d_Post_Manual_Cal_Instruction_Pic" , iCurrentPathIndex+1 , iCurrentPathPartIndex+1 );
+							pszPostManualCal_Instruction_Pic = GetVarString( clb, VARTYPE_TEST , szFormatedVariable  );	
+								
+							if ( pszPostManualCal_Instruction && ( strlen(pszPostManualCal_Instruction) > 1 ))
+							{
+								INSTRUCTION(pszPostManualCal_Instruction,pszPostManualCal_Instruction_Pic);
 							}
 						}
 					
@@ -933,6 +1053,20 @@ TSTE_TEST( embeddedTestCalibration )
 							STOP_TIMEOUT;
 						}
 					}
+				}
+			}
+			else
+			{
+				if ( iDB_NumberOfNetworkFiles > 0 )
+				{
+					CALLOC( pszNetworkAnalyzerStateFiles , iDB_NumberOfNetworkFiles , sizeof(char*));
+					
+					for ( iIndex = 0; iIndex < iDB_NumberOfNetworkFiles; iIndex++ )
+						CALLOC_COPY_STRING( pszNetworkAnalyzerStateFiles[iIndex] , "File.state" ); 	
+					
+					SetVarStringArray( clb , VARTYPE_EQUIPMENT_USE , szFormatedVariable , pszNetworkAnalyzerStateFiles  , iDB_NumberOfNetworkFiles , hNetworkAnalyzer );   
+					
+					iDB_NumberOfNetworkAnalyzerStates = iDB_NumberOfNetworkFiles;
 				}
 			}
 		}
@@ -1758,9 +1892,18 @@ FINALLY
 	
 	FREE(pszNetworkAnalyzer_ECAL_PortList);
 	FREE(pszEcalUserCharacterizations);
+
+	FREE(pszPreEcal_Instruction);
+	FREE(pszPreEcal_Instruction_Pic);
 	
 	FREE(pszPostEcal_Instruction);
 	FREE(pszPostEcal_Instruction_Pic);
+	
+	FREE(pszUserCal_Instruction); 
+	FREE(pszUserCal_Instruction_Pic); 
+	
+	FREE(pszPostManualCal_Instruction);
+	FREE(pszPostManualCal_Instruction_Pic); 
 	
 	FREE(pOldCalibFrequencyList);
 	FREE(pOldCalibFactorList);
@@ -1793,7 +1936,9 @@ FINALLY
 	
 	FREE(pszNoiseSourceFillTableFromPath);  
 	
+	FREE(viDB_MathTraceNumbers);
 	FREE_LIST(pszNetworkAnalyzerStateFiles,iDB_NumberOfNetworkAnalyzerStates);
-	
+	FREE_LIST(pszNetworkAnalyzerMathFunction,iDB_NumberOfMathFunctions);
+		
 	RETURN_VALUE(iTestError);
 }

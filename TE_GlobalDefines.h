@@ -154,6 +154,7 @@ typedef enum{ RUN_MODE_TEST , RUN_MODE_CALIBRATION , RUN_MODE_DEBUG , RUN_MODE_D
 
 typedef enum{ TEST_STATUS_RUNNING, TEST_STATUS_PASS, TEST_STATUS_FAIL, TEST_STATUS_ABORT, TEST_STATUS_ERROR, TEST_STATUS_DEMO, TEST_STATUS_SENTINEL } teSTATUS_TEST;
 
+typedef enum{ TEST_TYPE_TEST , TEST_TYPE_PRE_TEST , TEST_TYPE_POST_TEST } teTestType;
 
 typedef struct
 {
@@ -511,6 +512,9 @@ typedef struct
 			//------------ Version 5.4.9.0 --------------------//     
 			int									iGenerateReportsByStatusLevel;
 			
+			//------------ Version 5.5.3.0 --------------------//     
+			int									bUserSelectAutoReport;
+			
 } tsConfiguration;
 
 typedef struct 
@@ -719,6 +723,16 @@ typedef struct
 												iMaxNumberOfSlotsToSelect;
 			//------------ Version 5.4.1.0 --------------------//     
 			int									bSlotFinishedRunning;
+
+			//------------ Version 5.5.6.0 --------------------//  
+			int									iSelectedFinalTest;   
+			char								*pszTestType; 
+			
+			//------------ Version 5.6.6.0 --------------------//  
+			int									iSlotSynchronizationAtOnePointCounter,
+												hSlotSynchronizationAtOnePointLockHandle;		
+			
+			int									bGlobalDisplayDataUpdate;
 			
 }tsSlotStore;
 
@@ -960,6 +974,23 @@ typedef struct
 
 			//------------ Version 5.4.6.0 --------------------//  
 			int									bGeneratingReportsInProgress;
+			
+			//------------ Version 5.5.6.0 --------------------//  
+			int									iSelectedFinalTest;   
+			char								*pszTestType; 
+			
+			//------------ Version 5.6.6.0 --------------------//  
+			int									iSlotSynchronizationAtOnePointActiveSlots,
+												iMainSynchronizationAtOnePointCounter,
+												hSlotSynchronizationAtOnePointLockHandle;
+			
+			//------------ Version 5.6.10.0 --------------------//  
+			int									bOneOrMoreOfSlotsFinished;
+			
+			
+			//------------ Version 5.7.6.0 --------------------//    
+			
+			int									bExportReporting;
 			
 }tsMainStore;
 

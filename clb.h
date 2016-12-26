@@ -127,6 +127,8 @@
 
 #define				CONFIG_USER_DELETE_SOURCE_REPORT_ONLY			"DeleteSourceReportAfterGeneration"  
 
+#define				CONFIG_USER_SELECT_AUTO_REPORT					"SelectAutoReport"
+
 //the callbacks structure
 typedef void (*clbGUI_StoreFile) (int handle , int mode, char filepath[]);  
 typedef void (*clbGUI_Line_To_Window) (int handle , int mode, char msg[]);
@@ -281,7 +283,7 @@ typedef int				(*clbFillCallbacksDataStructure) ( int handle , void **pCallBackS
 
 typedef int				(*clbGetCurrentResultUnitsAcc)( int handle , int number , char *pUnits , double *plfAccuracy );
 typedef int				(*clbGetCurrentResultMinMax)( int handle , int number , double **pMin , double **pMax , int *pCount , int *piFloatingType , double *plfFloatingValue );
-//typedef int 			(*clbSetCurrentResultMinMax)( int handle , double *pMin , double *pMax , int *pCount , int *piFloatingType , double *plfFloatingValue ); 
+typedef int				(*clbSetCurrentResultMinMax)( int handle , int iResultNumber , double *pMin , double *pMax , int iCount , double lfStartX );
 
 typedef int				(*clbInterpolationTransfer)( int type , double *vlfXaxisArray , double *vlfYaxisArray , unsigned int numberOfPoints , unsigned int iNewNumberOfPoints  , double lfStartX , double lfStopX , double **vlfNewXaxisArray , double **vlfNewYaxisArray );  
 typedef int				(*clbInterpolationPoint)( int type , double *vlfXaxisArray , double *vlfYaxisArray , unsigned int numberOfPoints , double lfXcoordinate , double *pYcoordinate );  
@@ -316,6 +318,8 @@ typedef int				(*clbGetCurrentPathFrequencyList) ( int handle , double **pFreque
 
 typedef int				(*clbGetEquipmentHandle) ( int handle , int iType , char *pszAlias , int iNumber , int bAllowCreate , int *pEquipmentHandle );
 
+typedef int				(*clbCloseEquipmentHandle) ( int handle , int hEquipmentHandle );
+
 typedef int				(*clbGetCurrentResultDisbaleStatus) ( int handle , int iResultNumber ,int *piResultDisbaleStatus );
 
 typedef int				(*clbGetCurrentTestInfo)( int handle , int *piTestIndex , char **pszTestName , char **pszTestPrefix );
@@ -338,6 +342,9 @@ typedef int				(*clbGetCurrentResultSpecType)( int handle , int iResultNumber ,i
 typedef int				(*clbWaitForLastLogDisplayed)( int handle ); 
 
 typedef int				(*clbIsRunnningInDemoMode)( int handle );
+
+typedef int				(*clbSynchronizeAllSlotsAtThisPoint)( int handle , int bFirstRunWait , int *pIamTheMaster );
+
 
 typedef struct
 {
@@ -510,6 +517,14 @@ typedef struct
 			//============================ rev 5.1.28.0 =============================================//
 			clbIsRunnningInDemoMode							IsRunnningInDemoMode;
 			
+			//============================ rev 5.5.2.0 =============================================//
+			clbCloseEquipmentHandle							CloseEquipmentHandle;
+
+			//============================ rev 5.6.6.0 =============================================//
+			clbSynchronizeAllSlotsAtThisPoint				SynchronizeAllSlotsAtThisPoint; 
+
+			//============================ rev 5.7.0.0 =============================================//
+			clbSetCurrentResultMinMax						SetCurrentResultMinMax;
 		};
 	};
 	

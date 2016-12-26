@@ -241,14 +241,14 @@ STD_ERROR				PATH_SetPath( int handle , int iType , int iCalibPathPartIndex , ch
 		if ( pCurrentPathName == NULL )
 		{
 			sprintf( szPathVariableName , "Path_%d_Name" , iPathIndex+1 ); 
-			if (( VarGetString( hMainHandle , VAR_CONFIG_TEST , hCurrentTestId , szPathVariableName , &pCurrentPathName ) == 0 ) || ( pCurrentPathName == NULL ))
+			if (( VarGetString( hMainHandle , VAR_CONFIG_TEST , hCurrentTestId , szPathVariableName , &pCurrentPathName ) <= 0 ) || ( pCurrentPathName == NULL ))
 				VarSetString( hMainHandle , VAR_CONFIG_TEST , hCurrentTestId , szPathVariableName, "." ); 	
 			
 			if ( pCurrentPathName && ( strlen(pCurrentPathName) > 1 ))
 				bMainPathExists = 1;   
 			
 			sprintf( szPathVariableName , "Path_%d_Description" , iPathIndex+1 ); 
-			if (( VarGetString( hMainHandle , VAR_CONFIG_TEST , hCurrentTestId , szPathVariableName , &pCurrentPathDescription ) == 0 ) || ( pCurrentPathDescription == NULL ))
+			if (( VarGetString( hMainHandle , VAR_CONFIG_TEST , hCurrentTestId , szPathVariableName , &pCurrentPathDescription ) <= 0 ) || ( pCurrentPathDescription == NULL ))
 				VarSetString( hMainHandle , VAR_CONFIG_TEST , hCurrentTestId , szPathVariableName, "." ); 	
 			
 			sprintf( szPathVariableName , "Path_%d_Calibratable" , iPathIndex+1 ); 
@@ -367,7 +367,7 @@ STD_ERROR				PATH_SetPath( int handle , int iType , int iCalibPathPartIndex , ch
 						strcpy( pCurrentPathName , szPathNameFormated );                   
 					}
 					
-					if (( VarGetString( hMainHandle , VAR_CONFIG_STATION , tMainStore.hCurrentStationId , pCurrentPathName , &pPathString ) == 0 ) || ( pPathString == NULL ))    
+					if (( VarGetString( hMainHandle , VAR_CONFIG_STATION , tMainStore.hCurrentStationId , pCurrentPathName , &pPathString ) <= 0 ) || ( pPathString == NULL ))    
 						VarSetString( hMainHandle , VAR_CONFIG_STATION , tMainStore.hCurrentStationId , pCurrentPathName, "." );	
 				
 					break;
@@ -456,7 +456,7 @@ STD_ERROR				PATH_SetPath( int handle , int iType , int iCalibPathPartIndex , ch
 						strcpy( pCurrentPathPartName , szPathNameFormated );                   
 					}
 					
-					if (( VarGetString( hMainHandle , VAR_CONFIG_STATION , tMainStore.hCurrentStationId , pCurrentPathPartName , &pPathString ) == 0 ) || ( pPathString == NULL ))    
+					if (( VarGetString( hMainHandle , VAR_CONFIG_STATION , tMainStore.hCurrentStationId , pCurrentPathPartName , &pPathString ) <= 0 ) || ( pPathString == NULL ))    
 						VarSetString( hMainHandle , VAR_CONFIG_STATION , tMainStore.hCurrentStationId , pCurrentPathPartName, "." );
 				}
 			}

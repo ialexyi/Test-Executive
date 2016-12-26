@@ -85,6 +85,9 @@ typedef STD_ERROR   (*tfDRV_SpectrumAnalyzer_AlignNow)( int Handle , double lfTi
 
 typedef STD_ERROR   (*tfDRIVER_MANAGER_Equipment_BrowseSelectStateFiles)( int hHandle , char *pStoreFilePath , int *piNumberOfSelectedFiles , char ***pvszSelectedFileNamesList , int **pvszSelectedFileSizesList );
 
+typedef STD_ERROR   (*tfDRIVER_MANAGER_UpdateIgnoreDuplicationAddresses)( int hHandle );
+
+
 typedef struct
 {
 	tEquipment							*equipmentForInit;
@@ -136,6 +139,8 @@ int CVICALLBACK RUN_MultiInitThread( void *pData )
 	tfDRIVER_MANAGER_CALIBRATION_FillCalibrationInfo					fDRIVER_MANAGER_CALIBRATION_FillCalibrationInfo						=	NULL;
 	
 	tfDRIVER_MANAGER_CALIBRATION_Fill_AdditionalPower_CalibrationInfo   fDRIVER_MANAGER_CALIBRATION_Fill_AdditionalPower_CalibrationInfo	=	NULL;
+	
+	tfDRIVER_MANAGER_UpdateIgnoreDuplicationAddresses					fDRIVER_MANAGER_UpdateIgnoreDuplicationAddresses						=	NULL;
 	
 	char																*pFilePathName														=	NULL,
 																		*pSubDriverFilePathName												=	NULL; 
@@ -191,7 +196,7 @@ int CVICALLBACK RUN_MultiInitThread( void *pData )
 	// fill driver manager call back data  
 	FillCallbacksDataStructureOnly( pInitBlockMemory->hMainHandle , &pCallBackStructure , pInitBlockMemory->equipmentForInit->id ); 
 
-	fDRIVER_MANAGER_SETUP_UpdateCallbacksStructure( pCallBackStructure , 1 , pInitBlockMemory->equipmentForInit->address );
+	fDRIVER_MANAGER_SETUP_UpdateCallbacksStructure( pCallBackStructure , 2 , pInitBlockMemory->equipmentForInit->address , pInitBlockMemory->equipmentForInit->id );
 
 	FREE(pCallBackStructure);  
 	
@@ -232,14 +237,21 @@ int CVICALLBACK RUN_MultiInitThread( void *pData )
 				fDRIVER_MANAGER_STD_LoadConfigFile = (tfDRIVER_MANAGER_STD_LoadConfigFile) GetProcAddress( pInitBlockMemory->hDriverManagerLibrary , "DRV_StandardDevice_LoadConfigFile" );		
 				fDRIVER_MANAGER_STD_Get_Commands_List = (tfDRIVER_MANAGER_STD_Get_Commands_List) GetProcAddress( pInitBlockMemory->hDriverManagerLibrary , "DRV_StandardDevice_Get_Commands_List" );	
 				fDRIVER_MANAGER_STD_Check_Connection = (tfDRIVER_MANAGER_STD_Check_Connection) GetProcAddress( pInitBlockMemory->hDriverManagerLibrary , "DRV_StandardDevice_Check_Connection" );	
-				
+			
+				fDRIVER_MANAGER_UpdateIgnoreDuplicationAddresses = (tfDRIVER_MANAGER_UpdateIgnoreDuplicationAddresses) GetProcAddress( pInitBlockMemory->hDriverManagerLibrary , "DRV_StandardDevice_UpdateIgnoreDuplicationAddresses" );
+
 				if (( strchr( pInitBlockMemory->equipmentForInit->id_command , 'x' )) || ( strchr( pInitBlockMemory->equipmentForInit->id_command , 'X' )) )
 					sscanf( pInitBlockMemory->equipmentForInit->id_command , "%llx" , &ulCommandID );
 				else
 					ulCommandID = atol(pInitBlockMemory->equipmentForInit->id_command);
 				
-				UPDATERR( fDRIVER_MANAGER_STD_Init( pFilePathName , (int)ulCommandID , pInitBlockMemory->equipmentForInit->alias , pInitBlockMemory->equipmentForInit->address , &( pInitBlockMemory->equipmentForInit->handle )));
+				UPDATERR( fDRIVER_MANAGER_STD_Init( pFilePathName , (int)ulCommandID , pInitBlockMemory->equipmentForInit->alias , pInitBlockMemory->equipmentForInit->address , &( pInitBlockMemory->equipmentForInit->handle ) , 1 , 1 ));
 
+				if ( pInitBlockMemory->equipmentForInit->dup_address )
+				{
+					fDRIVER_MANAGER_UpdateIgnoreDuplicationAddresses( pInitBlockMemory->equipmentForInit->handle );
+				}
+				
 				if (( IS_OK ) && ( pInitBlockMemory->equipmentForInit->configlink )) 
 				{
 					UPDATERR( GetDataBaseFileByID( pInitBlockMemory->hDatabaseHandle , pInitBlockMemory->equipmentForInit->configlink , NULL , NULL , NULL  , NULL , &pFilePathName )); 
@@ -249,24 +261,27 @@ int CVICALLBACK RUN_MultiInitThread( void *pData )
 						UPDATERR( fDRIVER_MANAGER_STD_LoadConfigFile( pInitBlockMemory->equipmentForInit->handle , pFilePathName ));
 					}
 					
-					if ( IS_OK )
+					if ( pInitBlockMemory->equipmentForInit->check_commands )
 					{
-						UPDATERR( fDRIVER_MANAGER_STD_Get_Commands_List( pInitBlockMemory->equipmentForInit->handle , &vszSTD_Device_Commands_List , &iNumberOfSTD_Device_Commands ));
-					}
-					
-					if ( IS_OK )
-					{
-						for ( iCheckDeviceIndex = 0; iCheckDeviceIndex < iNumberOfSTD_Device_Commands; iCheckDeviceIndex++ )
+						if ( IS_OK )
 						{
-							if ( vszSTD_Device_Commands_List[iCheckDeviceIndex] && strlen(vszSTD_Device_Commands_List[iCheckDeviceIndex]))
+							UPDATERR( fDRIVER_MANAGER_STD_Get_Commands_List( pInitBlockMemory->equipmentForInit->handle , &vszSTD_Device_Commands_List , &iNumberOfSTD_Device_Commands ));
+						}
+					
+						if ( IS_OK )
+						{
+							for ( iCheckDeviceIndex = 0; iCheckDeviceIndex < iNumberOfSTD_Device_Commands; iCheckDeviceIndex++ )
 							{
-								CHK_STDERR_BREAK( fDRIVER_MANAGER_STD_Check_Connection ( pInitBlockMemory->equipmentForInit->handle , vszSTD_Device_Commands_List[iCheckDeviceIndex] , &bCheckDeviceStatus ));
-							
-								if ( bCheckDeviceStatus == 0 )
+								if ( vszSTD_Device_Commands_List[iCheckDeviceIndex] && strlen(vszSTD_Device_Commands_List[iCheckDeviceIndex]) && ( vszSTD_Device_Commands_List[iCheckDeviceIndex][0] != '-' ))
 								{
-									sprintf( szMessage , "Command [%s] is not initializet yet!!!" , vszSTD_Device_Commands_List[iCheckDeviceIndex] );
+									CHK_STDERR_BREAK( fDRIVER_MANAGER_STD_Check_Connection ( pInitBlockMemory->equipmentForInit->handle , vszSTD_Device_Commands_List[iCheckDeviceIndex] , &bCheckDeviceStatus ));
+							
+									if ( bCheckDeviceStatus == 0 )
+									{
+										sprintf( szMessage , "Command [%s] is not initializet yet!!!" , vszSTD_Device_Commands_List[iCheckDeviceIndex] );
 									
-									IF (( ConfirmPopup(szMessage,"Do you want to continue?") == 0 ) , szMessage );
+										IF (( ConfirmPopup(szMessage,"Do you want to continue?") == 0 ) , szMessage );
+									}
 								}
 							}
 						}
@@ -460,11 +475,8 @@ Error:
 	
 	if ( IS_OK )
 	{
-		if ( pInitBlockMemory->equipmentForInit->depends_on_power == 0 )
-			pInitBlockMemory->bPassStatus = 1;
-		else
-			pInitBlockMemory->bPassStatus = 0;                         
-		
+		pInitBlockMemory->bPassStatus = 1;
+
 		memcpy( &(pInitBlockMemory->StdError) , &StdError , sizeof(STD_ERROR) );
 	}
 	
@@ -547,7 +559,6 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 	
 	int																	iEquipmentCount														=	0;
 	
-	tfDRIVER_MANAGER_SETUP_UpdateCallbacksStructure						fDRIVER_MANAGER_SETUP_UpdateCallbacksStructure						=	NULL;
 	tfDRIVER_MANAGER_Get_SimulationMode									fDRIVER_MANAGER_Get_SimulationMode									=	NULL;
 	
 	tfDRIVER_MANAGER_Set_Calibration_Port_Number						fDRIVER_MANAGER_Set_Calibration_Port_Number        					=	NULL;
@@ -828,8 +839,6 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 	
 	fDRIVER_MANAGER_Set_Calibration_Power = (tfDRIVER_MANAGER_Set_Calibration_Power) GetProcAddress( tMainStore.hDriverManagerLibrary , "DRIVER_MANAGER_Set_Calibration_Power" );                        
 	
-	fDRIVER_MANAGER_SETUP_UpdateCallbacksStructure = (tfDRIVER_MANAGER_SETUP_UpdateCallbacksStructure) GetProcAddress( tMainStore.hDriverManagerLibrary , "DRIVER_MANAGER_SETUP_UpdateCallbacksStructure" );
-	
 	fDRIVER_MANAGER_Get_SimulationMode = (tfDRIVER_MANAGER_Get_SimulationMode) GetProcAddress( tMainStore.hDriverManagerLibrary , "DRIVER_MANAGER_Get_SimulationMode" );
 	
 	CHK_CMT( CmtNewLock ( "Equipment Init GUI" , OPT_TL_PROCESS_EVENTS_WHILE_WAITING , &hPanelEquipmentLock ));
@@ -875,6 +884,7 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 			if ( iStatus >= kCmtThreadFunctionComplete )
 				break;
 						
+			ProcessSystemEvents();  
 			DelayWithEventProcessing(0.5);
 
 		} while ( iStatus < kCmtThreadFunctionComplete );  
@@ -948,6 +958,8 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 				
 					if (( equipmentForInit[iEquipmentIndex]->calibratable ) && ( equipmentForInit[iEquipmentIndex]->bAlreadyCalibrated == 0 ))
 					{
+						FREE_LIST ( pszNetworkCalibration_FrequencyRanges , iNumberOfNetworkRanges );
+						
 						iNumberOfNetworkRanges = VarGetStringArray( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Frequency_Ranges" , &pszNetworkCalibration_FrequencyRanges );
 						
 						if ( iNumberOfNetworkRanges == 0 ) 
@@ -964,6 +976,8 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 							}
 						}	
 				
+						FREE_LIST ( pszNetworkCalibration_StateFile , iNumberOfNetworkStateFiles );    
+						
 						iNumberOfNetworkStateFiles = VarGetStringArray( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_StateFile" , &pszNetworkCalibration_StateFile );
 						
 						if ( iNumberOfNetworkStateFiles == 0 ) 
@@ -1025,7 +1039,7 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 							}
 						}
 				
-						if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_ECAL_PortList" , &pszECAL_Configuration ) == -1 ) 
+						if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_ECAL_PortList" , &pszECAL_Configuration ) <= 0 ) 
 						{
 							CALLOC( pszECAL_Configuration , 128 , sizeof(char));
 
@@ -1037,7 +1051,7 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 							}
 						}
 						
-						if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_ECAL_UserCalSet" , &pszECAL_UserCharacterizations ) == -1 ) 
+						if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_ECAL_UserCalSet" , &pszECAL_UserCharacterizations ) <= 0 ) 
 						{
 							CALLOC( pszECAL_UserCharacterizations , 128 , sizeof(char));
 
@@ -1082,11 +1096,11 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 							sprintf( szFormatedString , "Do you want to calibrate the Network Analyzer:\n- %s ?" , equipmentForInit[iEquipmentIndex]->name );
 					
 							if( ShowMessage ( tMainStore.hDatabaseHandle , INSTR_TYPE_YES_NO , "Network Analyzer", szFormatedString , NULL ))
-							{
+							{   
 								//=============================================== Spectrum Analyzer Calibration =======================================================================//
-								if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Instruction" , &pszCalibration_Instruction ) == -1 ) 
+								if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Instruction" , &pszCalibration_Instruction ) <= 0 ) 
 								{
-									CALLOC( pszCalibration_Instruction , 128 , sizeof(char));
+									CALLOC( pszCalibration_Instruction , 256 , sizeof(char));
 		
 									if ( pszCalibration_Instruction )
 									{
@@ -1096,9 +1110,9 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 									}
 								}
 						
-								if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Picture" , &pszCalibration_Picture ) == -1 ) 
+								if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Picture" , &pszCalibration_Picture ) <= 0 ) 
 								{
-									CALLOC( pszCalibration_Picture , 128 , sizeof(char));
+									CALLOC( pszCalibration_Picture , 64				 , sizeof(char));
 		
 									if ( pszCalibration_Picture )
 									{
@@ -1309,7 +1323,7 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 						if ( hCalibrationPowerMeterHandle )
 							hCalibrationMeasureHandle = hCalibrationPowerMeterHandle;
 						
-						if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Frequency_Ranges" , &pszCalibration_FrequencyRanges ) == -1 ) 
+						if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Frequency_Ranges" , &pszCalibration_FrequencyRanges ) <= 0 ) 
 						{
 							FREE_CALLOC( pszCalibration_FrequencyRanges , 64 , sizeof(char));
 		
@@ -1371,7 +1385,7 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 							}
 						}
 						
-						if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_StateFile" , &pszCalibration_StateFile ) == -1 ) 
+						if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_StateFile" , &pszCalibration_StateFile ) <= 0 ) 
 						{
 							CALLOC( pszCalibration_StateFile , 64 , sizeof(char));
 		
@@ -1383,7 +1397,7 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 							}
 						}
 				
-						if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Generator_StateFile" , &pszCalibration_Generator_StateFile ) == -1 ) 
+						if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Generator_StateFile" , &pszCalibration_Generator_StateFile ) <= 0 ) 
 						{
 							FREE_CALLOC( pszCalibration_Generator_StateFile , 64 , sizeof(char));
 		
@@ -1512,7 +1526,7 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 												//-------------------------------------------------------------------------//
 												
 												//=============================================== Auxiliary Cable Instruction =======================================================================//
-												if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Aux_Instruction" , &pszCalibration_Instruction ) == -1 ) 
+												if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Aux_Instruction" , &pszCalibration_Instruction ) <= 0 ) 
 												{
 													CALLOC( pszCalibration_Instruction , 128 , sizeof(char));
 		
@@ -1527,7 +1541,7 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 													}
 												}
 												
-												if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Aux_Picture" , &pszCalibration_Picture ) == -1 ) 
+												if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Aux_Picture" , &pszCalibration_Picture ) <= 0 ) 
 												{
 													CALLOC( pszCalibration_Picture , 128 , sizeof(char));
 		
@@ -1550,7 +1564,7 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 												FREE(pszCalibration_Instruction);  
 												FREE(pszCalibration_Picture);  
 								
-												if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Aux_NA_StateFile" , &pszCalibration_StateFile ) == -1 ) 
+												if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Aux_NA_StateFile" , &pszCalibration_StateFile ) <= 0 ) 
 												{
 													CALLOC( pszCalibration_StateFile , 128 , sizeof(char));
 	
@@ -1618,7 +1632,7 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 									}
 								}
 								
-								if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Instruction" , &pszCalibration_Instruction ) == -1 ) 
+								if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Instruction" , &pszCalibration_Instruction ) <= 0 ) 
 								{
 									CALLOC( pszCalibration_Instruction , 128 , sizeof(char));
 		
@@ -1638,7 +1652,7 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 									}
 								}
 						
-								if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Picture" , &pszCalibration_Picture ) == -1 ) 
+								if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Picture" , &pszCalibration_Picture ) <= 0 ) 
 								{
 									CALLOC( pszCalibration_Picture , 128 , sizeof(char));
 
@@ -1864,7 +1878,7 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 			
 						} while(0);
 			
-						if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Frequency_Ranges" , &pszCalibration_FrequencyRanges ) == -1 ) 
+						if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Frequency_Ranges" , &pszCalibration_FrequencyRanges ) <= 0 ) 
 						{
 							FREE_CALLOC( pszCalibration_FrequencyRanges , 64 , sizeof(char));
 		
@@ -1876,7 +1890,7 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 							}
 						}	
 				
-						if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_SG_Frequency_Ranges" , &pszCalibration_SG_FrequencyRanges ) == -1 ) 
+						if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_SG_Frequency_Ranges" , &pszCalibration_SG_FrequencyRanges ) <= 0 ) 
 						{
 							FREE_CALLOC( pszCalibration_SG_FrequencyRanges , 64 , sizeof(char));
 		
@@ -1888,7 +1902,7 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 							}
 						}
 					
-						if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_StateFile" , &pszCalibration_StateFile ) == -1 ) 
+						if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_StateFile" , &pszCalibration_StateFile ) <= 0 ) 
 						{
 							CALLOC( pszCalibration_StateFile , 64 , sizeof(char));
 		
@@ -1900,7 +1914,7 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 							}
 						}
 				
-						if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Generator_StateFile" , &pszCalibration_Generator_StateFile ) == -1 ) 
+						if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Generator_StateFile" , &pszCalibration_Generator_StateFile ) <= 0 ) 
 						{
 							FREE_CALLOC( pszCalibration_Generator_StateFile , 64 , sizeof(char));
 		
@@ -2110,7 +2124,7 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 								{
 									FREE(pszCalibration_AuxFrequencyRanges);
 									
-									if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Aux_Frequency_Ranges" , &pszCalibration_AuxFrequencyRanges ) == -1 ) 
+									if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Aux_Frequency_Ranges" , &pszCalibration_AuxFrequencyRanges ) <= 0 ) 
 									{
 										FREE_CALLOC( pszCalibration_AuxFrequencyRanges , 64 , sizeof(char));
 		
@@ -2143,7 +2157,7 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 												}
 												//-------------------------------------------------------------------------//
 												
-												if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Aux_Instruction" , &pszCalibration_Instruction ) == -1 ) 
+												if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Aux_Instruction" , &pszCalibration_Instruction ) <= 0 ) 
 												{
 													CALLOC( pszCalibration_Instruction , 128 , sizeof(char));
 		
@@ -2165,7 +2179,7 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 													}
 												}
 												
-												if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Aux_Picture" , &pszCalibration_Picture ) == -1 ) 
+												if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Aux_Picture" , &pszCalibration_Picture ) <= 0 ) 
 												{
 													CALLOC( pszCalibration_Picture , 128 , sizeof(char));
 
@@ -2190,7 +2204,7 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 												
 												if ( hCalibrationNetworkAnalyzerHandle && ( bSelfAuxCalibration == 0 ))
 												{
-													if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Aux_NA_StateFile" , &pszCalibration_StateFile ) == -1 ) 
+													if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Aux_NA_StateFile" , &pszCalibration_StateFile ) <= 0 ) 
 													{
 														CALLOC( pszCalibration_StateFile , 128 , sizeof(char));
 		
@@ -2287,7 +2301,7 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 									}
 								}
 								//=============================================== Spectrum Analyzer Calibration =======================================================================//
-								if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Instruction" , &pszCalibration_Instruction ) == -1 ) 
+								if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Instruction" , &pszCalibration_Instruction ) <= 0 ) 
 								{
 									CALLOC( pszCalibration_Instruction , 128 , sizeof(char));
 		
@@ -2299,7 +2313,7 @@ STD_ERROR		TE_EQUIP_RunInitialization( int hMainHandle , int *pbSkipRunning , in
 									}
 								}
 						
-								if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Picture" , &pszCalibration_Picture ) == -1 ) 
+								if ( VarGetString( hMainHandle , VAR_CONFIG_EQUIPMENT , equipmentForInit[iEquipmentIndex]->id , "Calibration_Picture" , &pszCalibration_Picture ) <= 0 ) 
 								{
 									CALLOC( pszCalibration_Picture , 128 , sizeof(char));
 
@@ -2543,6 +2557,9 @@ Error:
 		}
 	}
 	
+	FREE_LIST ( pszNetworkCalibration_FrequencyRanges , iNumberOfNetworkRanges );
+	FREE_LIST ( pszNetworkCalibration_StateFile , iNumberOfNetworkStateFiles );
+	
 	FREE( pInitBlockMemory );
 	
 	FREE(plfCalibration_Power);
@@ -2578,7 +2595,7 @@ Error:
 	return StdError;
 }
 
-STD_ERROR		TE_EQUIP_CloseEquipment( int hMainHandle )
+STD_ERROR		TE_EQUIP_CloseEquipment( int hMainHandle , unsigned long long hEquipmentID , int hEquipmentHandle )
 {	
 	STD_ERROR										StdError											=	{0};
 
@@ -2597,6 +2614,8 @@ STD_ERROR		TE_EQUIP_CloseEquipment( int hMainHandle )
 	int												vToCloseHandles[1024]								=	{0},
 													vEquipmentTypess[1024]								=	{0};
 	
+	int												bCloseOnlyOneDevice									= 	0;
+	
 	CHK_CMT( CmtGetTSVPtr ( hMainHandle , &pMainStore )); 
 	memcpy( &tMainStore , pMainStore , sizeof(tsMainStore));
 	
@@ -2611,20 +2630,44 @@ STD_ERROR		TE_EQUIP_CloseEquipment( int hMainHandle )
 				{
 					if ( vToCloseHandles[index] == pMainStore->tCurrentRunTestSeq.pCurrentRunTestSeq[iTestIndex].ptlDB_EquipmentList->equipment[iEquipmentUseIndex].handle )
 					{
-						pMainStore->tCurrentRunTestSeq.pCurrentRunTestSeq[iTestIndex].ptlDB_EquipmentList->equipment[iEquipmentUseIndex].handle = 0;	
+						pMainStore->tCurrentRunTestSeq.pCurrentRunTestSeq[iTestIndex].ptlDB_EquipmentList->equipment[iEquipmentUseIndex].handle = 0;
+						break;
 					}
 				}
+
+				if ( bCloseOnlyOneDevice )
+					continue;
 				
+				if ( hEquipmentID > 0 ) 
+				{
+					if ( pMainStore->tCurrentRunTestSeq.pCurrentRunTestSeq[iTestIndex].ptlDB_EquipmentList->equipment[iEquipmentUseIndex].equipment_id == hEquipmentID )
+					{
+						if ( hEquipmentHandle == 0 )
+						{
+							bCloseOnlyOneDevice = 1;
+						}
+						else
+						{
+							if ( hEquipmentHandle != pMainStore->tCurrentRunTestSeq.pCurrentRunTestSeq[iTestIndex].ptlDB_EquipmentList->equipment[iEquipmentUseIndex].handle )
+								continue;
+							
+							bCloseOnlyOneDevice = 1; 
+						}
+					}
+					else
+						continue;
+				}
+
 				if ( pMainStore->tCurrentRunTestSeq.pCurrentRunTestSeq[iTestIndex].ptlDB_EquipmentList->equipment[iEquipmentUseIndex].handle )
 				{
 					vToCloseHandles[iNumberOfEquipmentUsed] = pMainStore->tCurrentRunTestSeq.pCurrentRunTestSeq[iTestIndex].ptlDB_EquipmentList->equipment[iEquipmentUseIndex].handle;
-		
+	
 					pMainStore->tCurrentRunTestSeq.pCurrentRunTestSeq[iTestIndex].ptlDB_EquipmentList->equipment[iEquipmentUseIndex].handle = 0;
-		
+	
 					vEquipmentTypess[iNumberOfEquipmentUsed] = pMainStore->tCurrentRunTestSeq.pCurrentRunTestSeq[iTestIndex].ptlDB_EquipmentList->equipment[iEquipmentUseIndex].type;
-				
+			
 					iNumberOfEquipmentUsed++;
-				}
+				}				
 			}
 		}
 	
@@ -2804,7 +2847,7 @@ STD_ERROR		TE_EQUIP_TestConnection( int hMainHandle , unsigned long long ulEquip
 	// fill driver manager call back data  
 	FillCallbacksDataStructureOnly( hMainHandle , &pCallBackStructure , ulEquipmentID ); 
 
-	fDRIVER_MANAGER_SETUP_UpdateCallbacksStructure( pCallBackStructure , 1 , equipmentList->equipment[iEquipmentIndex].address );
+	fDRIVER_MANAGER_SETUP_UpdateCallbacksStructure( pCallBackStructure , 2 , equipmentList->equipment[iEquipmentIndex].address , ulEquipmentID );
 
 	FREE(pCallBackStructure);  
 	
@@ -2878,7 +2921,7 @@ STD_ERROR		TE_EQUIP_TestConnection( int hMainHandle , unsigned long long ulEquip
 				else
 					ulCommandID = atol(equipmentList->equipment[iEquipmentIndex].id_command);
 				
-				UPDATERR( fDRIVER_MANAGER_STD_Init( pFilePathName , (int)ulCommandID , equipmentList->equipment[iEquipmentIndex].alias , equipmentList->equipment[iEquipmentIndex].address , &( equipmentList->equipment[iEquipmentIndex].handle )));
+				UPDATERR( fDRIVER_MANAGER_STD_Init( pFilePathName , (int)ulCommandID , equipmentList->equipment[iEquipmentIndex].alias , equipmentList->equipment[iEquipmentIndex].address , &( equipmentList->equipment[iEquipmentIndex].handle ) , 1 , 1 ));
 
 				if (( IS_OK ) && ( equipmentList->equipment[iEquipmentIndex].configlink )) 
 				{
@@ -2914,19 +2957,22 @@ STD_ERROR		TE_EQUIP_TestConnection( int hMainHandle , unsigned long long ulEquip
 						}
 					}
 					
-					if ( IS_OK )
+					if ( equipmentList->equipment[iEquipmentIndex].check_commands )
 					{
-						for ( iCheckDeviceIndex = 0; iCheckDeviceIndex < iNumberOfSTD_Device_Commands; iCheckDeviceIndex++ )
+						if ( IS_OK )
 						{
-							if ( vszSTD_Device_Commands_List[iCheckDeviceIndex] && strlen(vszSTD_Device_Commands_List[iCheckDeviceIndex]))
+							for ( iCheckDeviceIndex = 0; iCheckDeviceIndex < iNumberOfSTD_Device_Commands; iCheckDeviceIndex++ )
 							{
-								CHK_STDERR_BREAK( fDRIVER_MANAGER_STD_Check_Connection ( equipmentList->equipment[iEquipmentIndex].handle , vszSTD_Device_Commands_List[iCheckDeviceIndex] , &bCheckDeviceStatus ));
-							
-								if ( bCheckDeviceStatus == 0 )
+								if ( vszSTD_Device_Commands_List[iCheckDeviceIndex] && strlen(vszSTD_Device_Commands_List[iCheckDeviceIndex]) && ( vszSTD_Device_Commands_List[0] != '-'))
 								{
-									sprintf( szMessage , "Command [%s] is not initializet yet!!!" , vszSTD_Device_Commands_List[iCheckDeviceIndex] );
+									CHK_STDERR_BREAK( fDRIVER_MANAGER_STD_Check_Connection ( equipmentList->equipment[iEquipmentIndex].handle , vszSTD_Device_Commands_List[iCheckDeviceIndex] , &bCheckDeviceStatus ));
+							
+									if ( bCheckDeviceStatus == 0 )
+									{
+										sprintf( szMessage , "Command [%s] is not initializet yet!!!" , vszSTD_Device_Commands_List[iCheckDeviceIndex] );
 								
-									IF (( ConfirmPopup(szMessage,"Do you want to continue?") == 0 ) , szMessage );
+										IF (( ConfirmPopup(szMessage,"Do you want to continue?") == 0 ) , szMessage );
+									}
 								}
 							}
 						}
@@ -3319,7 +3365,7 @@ Error:
 }
 
 
-STD_ERROR		TE_EQUIP_ConnectToEquipment( int hMainHandle , unsigned long long ulEquipmentID , int *pEquipmentHandle )
+STD_ERROR		TE_EQUIP_ConnectToEquipment( int hMainHandle , unsigned long long ulEquipmentID , int *pEquipmentHandle , int bViewConnectionWindow )
 {	
 	STD_ERROR													StdError											=	{0};
 	
@@ -3342,8 +3388,11 @@ STD_ERROR		TE_EQUIP_ConnectToEquipment( int hMainHandle , unsigned long long ulE
 	tfDRIVER_MANAGER_STD_LoadConfigFile							fDRIVER_MANAGER_STD_LoadConfigFile					=	NULL;
 	tfDRIVER_MANAGER_STD_Get_Commands_List						fDRIVER_MANAGER_STD_Get_Commands_List				=	NULL;
 	tfDRIVER_MANAGER_STD_Check_Connection						fDRIVER_MANAGER_STD_Check_Connection				=	NULL;
-
+	tfDRIVER_MANAGER_SETUP_UpdateCallbacksStructure				fDRIVER_MANAGER_SETUP_UpdateCallbacksStructure		=	NULL;
+	
 	tfDRIVER_MANAGER_Get_SimulationMode							fDRIVER_MANAGER_Get_SimulationMode					=	NULL;
+	
+	tfDRIVER_MANAGER_UpdateIgnoreDuplicationAddresses			fDRIVER_MANAGER_UpdateIgnoreDuplicationAddresses	=	NULL;
 	
 	char														*pFilePathName										=	NULL,
 																*pSubDriverFilePathName								=	NULL;  
@@ -3367,6 +3416,8 @@ STD_ERROR		TE_EQUIP_ConnectToEquipment( int hMainHandle , unsigned long long ulE
 	int															hEquipmentHandle									=	0;
 	
 	int															iSimulationMode										=	0;
+
+	void														*pCallBackStructure									=	NULL;
 	
 	CHK_CMT( CmtGetTSVPtr ( hMainHandle , &pMainStore )); 
 	memcpy( &tMainStore , pMainStore , sizeof(tsMainStore));  
@@ -3390,34 +3441,46 @@ STD_ERROR		TE_EQUIP_ConnectToEquipment( int hMainHandle , unsigned long long ulE
 		
 	IF (( equipmentList->equipment[iEquipmentIndex].id != ulEquipmentID ) , "Wrong Equipment ID" );
 	
-	CHK_UIL (hPanelEquipment = LoadPanel (0, "TEST_EXEC_UI.uir", EQUIP_INIT ));
+	if ( bViewConnectionWindow )
+	{
+		CHK_UIL (hPanelEquipment = LoadPanel (0, "TEST_EXEC_UI.uir", EQUIP_INIT ));
 
-	InstallPopup (hPanelEquipment);
-	bPopup = 1;
+		InstallPopup (hPanelEquipment);
+		bPopup = 1;
+
+		InsertTableRows ( hPanelEquipment , EQUIP_INIT_TABLE , (1) , 1 , VAL_CELL_STRING );
+		SetTableRowAttribute (hPanelEquipment, EQUIP_INIT_TABLE, (1), ATTR_LABEL_BOLD, 1);
+		SetTableRowAttribute (hPanelEquipment, EQUIP_INIT_TABLE, (1), ATTR_LABEL_COLOR, VAL_WHITE);
+		SetTableRowAttribute (hPanelEquipment, EQUIP_INIT_TABLE, (1), ATTR_LABEL_POINT_SIZE, 15);
 	
-	InsertTableRows ( hPanelEquipment , EQUIP_INIT_TABLE , (1) , 1 , VAL_CELL_STRING );
-	SetTableRowAttribute (hPanelEquipment, EQUIP_INIT_TABLE, (1), ATTR_LABEL_BOLD, 1);
-	SetTableRowAttribute (hPanelEquipment, EQUIP_INIT_TABLE, (1), ATTR_LABEL_COLOR, VAL_WHITE);
-	SetTableRowAttribute (hPanelEquipment, EQUIP_INIT_TABLE, (1), ATTR_LABEL_POINT_SIZE, 15);
+		SetTableCellAttribute ( hPanelEquipment, EQUIP_INIT_TABLE ,MakePoint (1,(1)), ATTR_TEXT_BOLD, 1); 
+		SetTableCellAttribute ( hPanelEquipment, EQUIP_INIT_TABLE ,MakePoint (2,(1)), ATTR_TEXT_BOLD, 1);
+		SetTableCellAttribute ( hPanelEquipment, EQUIP_INIT_TABLE ,MakePoint (3,(1)), ATTR_TEXT_BOLD, 1);
 	
-	SetTableCellAttribute ( hPanelEquipment, EQUIP_INIT_TABLE ,MakePoint (1,(1)), ATTR_TEXT_BOLD, 1); 
-	SetTableCellAttribute ( hPanelEquipment, EQUIP_INIT_TABLE ,MakePoint (2,(1)), ATTR_TEXT_BOLD, 1);
-	SetTableCellAttribute ( hPanelEquipment, EQUIP_INIT_TABLE ,MakePoint (3,(1)), ATTR_TEXT_BOLD, 1);
+		SetTableCellAttribute (hPanelEquipment, EQUIP_INIT_TABLE, MakePoint (1,(1)), ATTR_CELL_JUSTIFY, VAL_CENTER_CENTER_JUSTIFIED);
+		SetTableCellAttribute (hPanelEquipment, EQUIP_INIT_TABLE, MakePoint (2,(1)), ATTR_CELL_JUSTIFY, VAL_CENTER_CENTER_JUSTIFIED);
+		SetTableCellAttribute (hPanelEquipment, EQUIP_INIT_TABLE, MakePoint (3,(1)), ATTR_CELL_JUSTIFY, VAL_CENTER_CENTER_JUSTIFIED); 
 	
-	SetTableCellAttribute (hPanelEquipment, EQUIP_INIT_TABLE, MakePoint (1,(1)), ATTR_CELL_JUSTIFY, VAL_CENTER_CENTER_JUSTIFIED);
-	SetTableCellAttribute (hPanelEquipment, EQUIP_INIT_TABLE, MakePoint (2,(1)), ATTR_CELL_JUSTIFY, VAL_CENTER_CENTER_JUSTIFIED);
-	SetTableCellAttribute (hPanelEquipment, EQUIP_INIT_TABLE, MakePoint (3,(1)), ATTR_CELL_JUSTIFY, VAL_CENTER_CENTER_JUSTIFIED); 
+		SetTableCellAttribute (hPanelEquipment, EQUIP_INIT_TABLE, MakePoint (1,(1)), ATTR_TEXT_COLOR, MAIN_COLOR );
+		SetTableCellAttribute (hPanelEquipment, EQUIP_INIT_TABLE, MakePoint (2,(1)), ATTR_TEXT_COLOR, MAIN_COLOR );
 	
-	SetTableCellAttribute (hPanelEquipment, EQUIP_INIT_TABLE, MakePoint (1,(1)), ATTR_TEXT_COLOR, MAIN_COLOR );
-	SetTableCellAttribute (hPanelEquipment, EQUIP_INIT_TABLE, MakePoint (2,(1)), ATTR_TEXT_COLOR, MAIN_COLOR );
-	
-	SetTableCellVal ( hPanelEquipment, EQUIP_INIT_TABLE , MakePoint(1,(1)), equipmentList->equipment[iEquipmentIndex].alias );
-	SetTableCellVal ( hPanelEquipment, EQUIP_INIT_TABLE , MakePoint(2,(1)), equipmentList->equipment[iEquipmentIndex].name ); 
+		SetTableCellVal ( hPanelEquipment, EQUIP_INIT_TABLE , MakePoint(1,(1)), equipmentList->equipment[iEquipmentIndex].alias );
+		SetTableCellVal ( hPanelEquipment, EQUIP_INIT_TABLE , MakePoint(2,(1)), equipmentList->equipment[iEquipmentIndex].name ); 
+	}
 	
 	//----------------------------------- Initialization -----------------------------------------//
 	
 	UPDATERR( GetDataBaseFileByID( tMainStore.hDatabaseHandle , equipmentList->equipment[iEquipmentIndex].driverlink , NULL , NULL , NULL  , NULL , &pFilePathName ));
 
+	fDRIVER_MANAGER_SETUP_UpdateCallbacksStructure = (tfDRIVER_MANAGER_SETUP_UpdateCallbacksStructure) GetProcAddress( tMainStore.hDriverManagerLibrary , "DRIVER_MANAGER_SETUP_UpdateCallbacksStructure" );
+	
+	// fill driver manager call back data  
+	FillCallbacksDataStructureOnly( hMainHandle , &pCallBackStructure , ulEquipmentID ); 
+
+	fDRIVER_MANAGER_SETUP_UpdateCallbacksStructure( pCallBackStructure , 2 , equipmentList->equipment[iEquipmentIndex].address , ulEquipmentID );
+
+	FREE(pCallBackStructure); 
+	
 	fDRIVER_MANAGER_Get_SimulationMode = (tfDRIVER_MANAGER_Get_SimulationMode) GetProcAddress( tMainStore.hDriverManagerLibrary , "DRIVER_MANAGER_Get_SimulationMode" );
 
 	if ( IS_NOT_OK )
@@ -3453,14 +3516,20 @@ STD_ERROR		TE_EQUIP_ConnectToEquipment( int hMainHandle , unsigned long long ulE
 				fDRIVER_MANAGER_STD_LoadConfigFile = (tfDRIVER_MANAGER_STD_LoadConfigFile) GetProcAddress( tMainStore.hDriverManagerLibrary , "DRV_StandardDevice_LoadConfigFile" );		
 				fDRIVER_MANAGER_STD_Get_Commands_List = (tfDRIVER_MANAGER_STD_Get_Commands_List) GetProcAddress( tMainStore.hDriverManagerLibrary , "DRV_StandardDevice_Get_Commands_List" );	
 				fDRIVER_MANAGER_STD_Check_Connection = (tfDRIVER_MANAGER_STD_Check_Connection) GetProcAddress( tMainStore.hDriverManagerLibrary , "DRV_StandardDevice_Check_Connection" );	
+				fDRIVER_MANAGER_UpdateIgnoreDuplicationAddresses = (tfDRIVER_MANAGER_UpdateIgnoreDuplicationAddresses) GetProcAddress( tMainStore.hDriverManagerLibrary , "DRV_StandardDevice_UpdateIgnoreDuplicationAddresses" );
 				
 				if (( strchr( equipmentList->equipment[iEquipmentIndex].id_command , 'x' )) || ( strchr( equipmentList->equipment[iEquipmentIndex].id_command , 'X' )) )
 					sscanf( equipmentList->equipment[iEquipmentIndex].id_command , "%llx" , &ulCommandID );
 				else
 					ulCommandID = atol(equipmentList->equipment[iEquipmentIndex].id_command);
 				
-				UPDATERR( fDRIVER_MANAGER_STD_Init( pFilePathName , (int)ulCommandID , equipmentList->equipment[iEquipmentIndex].alias , equipmentList->equipment[iEquipmentIndex].address , &( equipmentList->equipment[iEquipmentIndex].handle )));
+				UPDATERR( fDRIVER_MANAGER_STD_Init( pFilePathName , (int)ulCommandID , equipmentList->equipment[iEquipmentIndex].alias , equipmentList->equipment[iEquipmentIndex].address , &( equipmentList->equipment[iEquipmentIndex].handle ) , 1 , 1 ));
 
+				if ( equipmentList->equipment[iEquipmentIndex].dup_address )
+				{
+					fDRIVER_MANAGER_UpdateIgnoreDuplicationAddresses( equipmentList->equipment[iEquipmentIndex].handle );
+				}
+				
 				if (( IS_OK ) && ( equipmentList->equipment[iEquipmentIndex].configlink )) 
 				{
 					UPDATERR( GetDataBaseFileByID( tMainStore.hDatabaseHandle , equipmentList->equipment[iEquipmentIndex].configlink , NULL , NULL , NULL  , NULL , &pFilePathName )); 
@@ -3470,27 +3539,30 @@ STD_ERROR		TE_EQUIP_ConnectToEquipment( int hMainHandle , unsigned long long ulE
 						UPDATERR( fDRIVER_MANAGER_STD_LoadConfigFile( equipmentList->equipment[iEquipmentIndex].handle , pFilePathName ));
 					}
 					
-					if ( IS_OK )
+					if ( equipmentList->equipment[iEquipmentIndex].check_commands )
 					{
-						UPDATERR( fDRIVER_MANAGER_STD_Get_Commands_List( equipmentList->equipment[iEquipmentIndex].handle , &vszSTD_Device_Commands_List , &iNumberOfSTD_Device_Commands ));
-						
 						if ( IS_OK )
 						{
-							IF ((( vszSTD_Device_Commands_List == NULL ) || ( iNumberOfSTD_Device_Commands == 0 )) , "No configuration info found." );
-						}
-					}
-					
-					if ( IS_OK )
-					{
-						for ( iCheckDeviceIndex = 0; iCheckDeviceIndex < iNumberOfSTD_Device_Commands; iCheckDeviceIndex++ )
-						{
-							CHK_STDERR_BREAK( fDRIVER_MANAGER_STD_Check_Connection ( equipmentList->equipment[iEquipmentIndex].handle , vszSTD_Device_Commands_List[iCheckDeviceIndex] , &bCheckDeviceStatus ));
-							
-							if ( bCheckDeviceStatus == 0 )
+							UPDATERR( fDRIVER_MANAGER_STD_Get_Commands_List( equipmentList->equipment[iEquipmentIndex].handle , &vszSTD_Device_Commands_List , &iNumberOfSTD_Device_Commands ));
+						
+							if ( IS_OK )
 							{
-								sprintf( szMessage , "Command [%s] is not initializet yet!!!" , vszSTD_Device_Commands_List[iCheckDeviceIndex] );
+								IF ((( vszSTD_Device_Commands_List == NULL ) || ( iNumberOfSTD_Device_Commands == 0 )) , "No configuration info found." );
+							}
+						}
+					
+						if ( IS_OK )
+						{
+							for ( iCheckDeviceIndex = 0; iCheckDeviceIndex < iNumberOfSTD_Device_Commands; iCheckDeviceIndex++ )
+							{
+								CHK_STDERR_BREAK( fDRIVER_MANAGER_STD_Check_Connection ( equipmentList->equipment[iEquipmentIndex].handle , vszSTD_Device_Commands_List[iCheckDeviceIndex] , &bCheckDeviceStatus ));
+							
+								if ( bCheckDeviceStatus == 0 )
+								{
+									sprintf( szMessage , "Command [%s] is not initializet yet!!!" , vszSTD_Device_Commands_List[iCheckDeviceIndex] );
 								
-								IF (( ConfirmPopup(szMessage,"Do you want to continue?") == 0 ) , szMessage );
+									IF (( ConfirmPopup(szMessage,"Do you want to continue?") == 0 ) , szMessage );
+								}
 							}
 						}
 					}
@@ -3639,51 +3711,54 @@ STD_ERROR		TE_EQUIP_ConnectToEquipment( int hMainHandle , unsigned long long ulE
 			fDRIVER_MANAGER_Close( &(equipmentList->equipment[iEquipmentIndex].handle) );	 
 	}
 	
-	SetActivePanel ( hPanelEquipment );  
-	SetActiveTableCell ( hPanelEquipment, EQUIP_INIT_TABLE , MakePoint(3,(1)) );       
-	
-	if ( IS_OK ) 
+	if ( bViewConnectionWindow )
 	{
-		SetTableCellAttribute (hPanelEquipment, EQUIP_INIT_TABLE, MakePoint (3,(1)), ATTR_TEXT_COLOR, VAL_DK_GREEN ); 
-		
-		if ( iSimulationMode )
+		SetActivePanel ( hPanelEquipment );  
+		SetActiveTableCell ( hPanelEquipment, EQUIP_INIT_TABLE , MakePoint(3,(1)) );       
+	
+		if ( IS_OK ) 
 		{
-			SetTableCellVal ( hPanelEquipment, EQUIP_INIT_TABLE , MakePoint(3,(1)), "DEMO" );
+			SetTableCellAttribute (hPanelEquipment, EQUIP_INIT_TABLE, MakePoint (3,(1)), ATTR_TEXT_COLOR, VAL_DK_GREEN ); 
+		
+			if ( iSimulationMode )
+			{
+				SetTableCellVal ( hPanelEquipment, EQUIP_INIT_TABLE , MakePoint(3,(1)), "DEMO" );
+			}
+			else
+			{
+				SetTableCellVal ( hPanelEquipment, EQUIP_INIT_TABLE , MakePoint(3,(1)), "PASS" );   						
+			}
 		}
 		else
 		{
-			SetTableCellVal ( hPanelEquipment, EQUIP_INIT_TABLE , MakePoint(3,(1)), "PASS" );   						
+			SetTableCellAttribute ( hPanelEquipment, EQUIP_INIT_TABLE ,MakePoint (3,(1)), ATTR_TEXT_COLOR,VAL_DK_RED); 
+			SetTableCellVal ( hPanelEquipment, EQUIP_INIT_TABLE , MakePoint(3,(1)), "FAIL" );  
 		}
-	}
-	else
-	{
-		SetTableCellAttribute ( hPanelEquipment, EQUIP_INIT_TABLE ,MakePoint (3,(1)), ATTR_TEXT_COLOR,VAL_DK_RED); 
-		SetTableCellVal ( hPanelEquipment, EQUIP_INIT_TABLE , MakePoint(3,(1)), "FAIL" );  
-	}
 	
-	ProcessDrawEvents(); 
+		ProcessDrawEvents(); 
 	
-	do
-	{
-		MakeApplicationActive ();
-		SetActivePanel ( hPanelEquipment );
-		ProcessDrawEvents();
+		do
+		{
+			MakeApplicationActive ();
+			SetActivePanel ( hPanelEquipment );
+			ProcessDrawEvents();
 	
-		CHK_CMT( CmtGetTSVPtr ( hMainHandle , &pMainStore ));  
-		STDERR_COPY ( pMainStore->pRet );
-		CmtReleaseTSVPtr (hMainHandle);
-		StdError.pNextLevelError = NULL; 
-		CHK_STDERR(StdError);
+			CHK_CMT( CmtGetTSVPtr ( hMainHandle , &pMainStore ));  
+			STDERR_COPY ( pMainStore->pRet );
+			CmtReleaseTSVPtr (hMainHandle);
+			StdError.pNextLevelError = NULL; 
+			CHK_STDERR(StdError);
 	
-		event = GetUserEvent ( 1 , &panel , &control );   
+			event = GetUserEvent ( 1 , &panel , &control );   
 	
-		if ( panel != hPanelEquipment )
-			continue;
+			if ( panel != hPanelEquipment )
+				continue;
 
-		if ( control == EQUIP_INIT_CANCEL )
-			break;
+			if ( control == EQUIP_INIT_CANCEL )
+				break;
 	
-	}while ( control != EQUIP_INIT_ACCEPT );
+		}while ( control != EQUIP_INIT_ACCEPT );
+	}
 	
 Error:
 
@@ -3705,6 +3780,8 @@ Error:
 	db_equipment_freelist(&equipmentList);
 	
 	FREE(pFilePathName);
+	
+	FREE_LIST( vszSTD_Device_Commands_List , iNumberOfSTD_Device_Commands );  
 	
 	return StdError;
 }
@@ -4485,7 +4562,7 @@ STD_ERROR		TE_EQUIP_Get_Equipment_Information( int hMainHandle , char *pAddress 
 	
 	fDRIVER_MANAGER_Close = (tfDRIVER_MANAGER_Close) GetProcAddress( tMainStore.hDriverManagerLibrary , "DRV_StandardDevice_Close" ); 
 	
-	CHK_STDERR( TE_EQUIP_ConnectToEquipment( hMainHandle , ulEquipmentID , &EquipmentHandle ));
+	CHK_STDERR( TE_EQUIP_ConnectToEquipment( hMainHandle , ulEquipmentID , &EquipmentHandle , 0 ));
 
 	if ( EquipmentHandle > 0 )
 		bConnectionStatus = 1;
@@ -4591,6 +4668,8 @@ STD_ERROR		TE_EQUIP_BrowseStateFiles( int hMainHandle , unsigned long long ulEqu
 	tfDRIVER_MANAGER_Get_SimulationMode									fDRIVER_MANAGER_Get_SimulationMode									=	NULL;
 	
 	tfDRIVER_MANAGER_Equipment_BrowseSelectStateFiles					fDRIVER_MANAGER_Equipment_BrowseSelectStateFiles					=	NULL;
+
+	tfDRIVER_MANAGER_UpdateIgnoreDuplicationAddresses					fDRIVER_MANAGER_UpdateIgnoreDuplicationAddresses						=	NULL;
 	
 	char																*pFilePathName														=	NULL,
 																		*pSubDriverFilePathName												=	NULL; 
@@ -4646,7 +4725,7 @@ STD_ERROR		TE_EQUIP_BrowseStateFiles( int hMainHandle , unsigned long long ulEqu
 	// fill driver manager call back data  
 	FillCallbacksDataStructureOnly( hMainHandle , &pCallBackStructure , ulEquipmentID ); 
 
-	fDRIVER_MANAGER_SETUP_UpdateCallbacksStructure( pCallBackStructure , 1 , equipmentList->equipment[iEquipmentIndex].address );
+	fDRIVER_MANAGER_SETUP_UpdateCallbacksStructure( pCallBackStructure , 2 , equipmentList->equipment[iEquipmentIndex].address , ulEquipmentID );
 
 	FREE(pCallBackStructure);  
 	
@@ -4716,14 +4795,20 @@ STD_ERROR		TE_EQUIP_BrowseStateFiles( int hMainHandle , unsigned long long ulEqu
 				fDRIVER_MANAGER_STD_LoadConfigFile = (tfDRIVER_MANAGER_STD_LoadConfigFile) GetProcAddress( tMainStore.hDriverManagerLibrary , "DRV_StandardDevice_LoadConfigFile" );		
 				fDRIVER_MANAGER_STD_Get_Commands_List = (tfDRIVER_MANAGER_STD_Get_Commands_List) GetProcAddress( tMainStore.hDriverManagerLibrary , "DRV_StandardDevice_Get_Commands_List" );	
 				fDRIVER_MANAGER_STD_Check_Connection = (tfDRIVER_MANAGER_STD_Check_Connection) GetProcAddress( tMainStore.hDriverManagerLibrary , "DRV_StandardDevice_Check_Connection" );	
+				fDRIVER_MANAGER_UpdateIgnoreDuplicationAddresses = (tfDRIVER_MANAGER_UpdateIgnoreDuplicationAddresses) GetProcAddress( tMainStore.hDriverManagerLibrary , "DRV_StandardDevice_UpdateIgnoreDuplicationAddresses" );
 				
 				if (( strchr( equipmentList->equipment[iEquipmentIndex].id_command , 'x' )) || ( strchr( equipmentList->equipment[iEquipmentIndex].id_command , 'X' )) )
 					sscanf( equipmentList->equipment[iEquipmentIndex].id_command , "%llx" , &ulCommandID );
 				else
 					ulCommandID = atol(equipmentList->equipment[iEquipmentIndex].id_command);
 				
-				UPDATERR( fDRIVER_MANAGER_STD_Init( pFilePathName , (int)ulCommandID , equipmentList->equipment[iEquipmentIndex].alias , equipmentList->equipment[iEquipmentIndex].address , &( equipmentList->equipment[iEquipmentIndex].handle )));
+				UPDATERR( fDRIVER_MANAGER_STD_Init( pFilePathName , (int)ulCommandID , equipmentList->equipment[iEquipmentIndex].alias , equipmentList->equipment[iEquipmentIndex].address , &( equipmentList->equipment[iEquipmentIndex].handle ) , 1 , 1 ));
 
+				if ( equipmentList->equipment[iEquipmentIndex].dup_address )
+				{
+					fDRIVER_MANAGER_UpdateIgnoreDuplicationAddresses( equipmentList->equipment[iEquipmentIndex].handle );
+				}
+				
 				if (( IS_OK ) && ( equipmentList->equipment[iEquipmentIndex].configlink )) 
 				{
 					UPDATERR( GetDataBaseFileByID( tMainStore.hDatabaseHandle , equipmentList->equipment[iEquipmentIndex].configlink , NULL , NULL , NULL  , NULL , &pFilePathName )); 
@@ -4758,19 +4843,22 @@ STD_ERROR		TE_EQUIP_BrowseStateFiles( int hMainHandle , unsigned long long ulEqu
 						}
 					}
 					
-					if ( IS_OK )
-					{
-						for ( iCheckDeviceIndex = 0; iCheckDeviceIndex < iNumberOfSTD_Device_Commands; iCheckDeviceIndex++ )
+					if ( equipmentList->equipment[iEquipmentIndex].check_commands )
+					{   
+						if ( IS_OK )
 						{
-							if ( vszSTD_Device_Commands_List[iCheckDeviceIndex] && strlen(vszSTD_Device_Commands_List[iCheckDeviceIndex]))
+							for ( iCheckDeviceIndex = 0; iCheckDeviceIndex < iNumberOfSTD_Device_Commands; iCheckDeviceIndex++ )
 							{
-								CHK_STDERR_BREAK( fDRIVER_MANAGER_STD_Check_Connection ( equipmentList->equipment[iEquipmentIndex].handle , vszSTD_Device_Commands_List[iCheckDeviceIndex] , &bCheckDeviceStatus ));
-							
-								if ( bCheckDeviceStatus == 0 )
+								if ( vszSTD_Device_Commands_List[iCheckDeviceIndex] && strlen(vszSTD_Device_Commands_List[iCheckDeviceIndex]))
 								{
-									sprintf( szMessage , "Command [%s] is not initializet yet!!!" , vszSTD_Device_Commands_List[iCheckDeviceIndex] );
+									CHK_STDERR_BREAK( fDRIVER_MANAGER_STD_Check_Connection ( equipmentList->equipment[iEquipmentIndex].handle , vszSTD_Device_Commands_List[iCheckDeviceIndex] , &bCheckDeviceStatus ));
+							
+									if ( bCheckDeviceStatus == 0 )
+									{
+										sprintf( szMessage , "Command [%s] is not initializet yet!!!" , vszSTD_Device_Commands_List[iCheckDeviceIndex] );
 								
-									IF (( ConfirmPopup(szMessage,"Do you want to continue?") == 0 ) , szMessage );
+										IF (( ConfirmPopup(szMessage,"Do you want to continue?") == 0 ) , szMessage );
+									}
 								}
 							}
 						}
